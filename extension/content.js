@@ -248,9 +248,10 @@
   function getCaptionText() {
     const container = document.querySelector(".ytp-caption-window-container");
     if (container) {
-      // Use innerText to preserve YouTube's line breaks
+      // Use innerText to preserve YouTube's line breaks and spacing
       return container.innerText;
     }
+    // Fallback: get individual segments and join with spaces
     const segments = Array.from(
       document.querySelectorAll(".ytp-caption-segment")
     );
@@ -260,7 +261,7 @@
     return segments
       .map((segment) => segment.textContent)
       .filter(Boolean)
-      .join("")
+      .join(" ") // Add space between segments!
       .trim();
   }
 
