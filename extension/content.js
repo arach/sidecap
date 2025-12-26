@@ -71,27 +71,28 @@
     svg.setAttribute("stroke-linejoin", "round");
     svg.style.display = "block";
 
+    // Lucide icons - clean, professional, open-source
     if (type === "copy") {
-      // Clipboard icon
+      // lucide: clipboard-copy
       svg.innerHTML = `
-        <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
-        <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+        <rect width="8" height="4" x="8" y="2" rx="1" ry="1"/>
+        <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/>
       `;
     } else if (type === "settings") {
-      // Proper gear/cog icon
+      // lucide: settings
       svg.innerHTML = `
-        <circle cx="12" cy="12" r="3"></circle>
-        <path d="M12 1v6m0 6v6M5.64 5.64l4.24 4.24m4.24 4.24l4.24 4.24M1 12h6m6 0h6M5.64 18.36l4.24-4.24m4.24-4.24l4.24-4.24"></path>
+        <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/>
+        <circle cx="12" cy="12" r="3"/>
       `;
-    } else if (type === "history") {
-      // Clock/History icon
-      svg.innerHTML = `
-        <circle cx="12" cy="12" r="10"></circle>
-        <polyline points="12 6 12 12 16 14"></polyline>
-      `;
+    } else if (type === "chevron-up") {
+      // lucide: chevron-up
+      svg.innerHTML = `<path d="m18 15-6-6-6 6"/>`;
+    } else if (type === "chevron-down") {
+      // lucide: chevron-down
+      svg.innerHTML = `<path d="m6 9 6 6 6-6"/>`;
     } else if (type === "check") {
-      // Checkmark
-      svg.innerHTML = `<polyline points="20 6 9 17 4 12"></polyline>`;
+      // lucide: check
+      svg.innerHTML = `<path d="M20 6 9 17l-5-5"/>`;
     }
 
     return svg;
@@ -882,19 +883,22 @@
     const titleText = createElement("div", "captions-titlebar-text-v2");
     titleText.textContent = "Captions";
 
+    const collapseButton = createElement("button", "captions-collapse-button-v2");
+    collapseButton.type = "button";
+    collapseButton.appendChild(createSVGIcon("chevron-down", 16));
+    collapseButton.title = "Collapse/Expand";
+
+    titleLeft.append(titleText, collapseButton);
+
+    const titleRight = createElement("div", "captions-titlebar-right-v2");
     const settingsIcon = createElement("button", "captions-settings-icon-v2");
     settingsIcon.type = "button";
     settingsIcon.appendChild(createSVGIcon("settings", 18));
     settingsIcon.title = "Settings";
 
-    titleLeft.append(titleText, settingsIcon);
+    titleRight.appendChild(settingsIcon);
 
-    const collapseButton = createElement("button", "captions-collapse-button-v2");
-    collapseButton.type = "button";
-    collapseButton.innerHTML = "▼";
-    collapseButton.title = "Collapse/Expand";
-
-    titleBar.append(titleLeft, collapseButton);
+    titleBar.append(titleLeft, titleRight);
 
     // Content area (collapsible)
     const sidebarContent = createElement("div", "captions-sidebar-content-v2");
@@ -1072,7 +1076,8 @@
     collapseButton.addEventListener("click", () => {
       sidebar.classList.toggle("is-collapsed");
       const isCollapsed = sidebar.classList.contains("is-collapsed");
-      collapseButton.innerHTML = isCollapsed ? "▲" : "▼";
+      collapseButton.textContent = "";
+      collapseButton.appendChild(createSVGIcon(isCollapsed ? "chevron-up" : "chevron-down", 16));
       config.sidebarCollapsed = isCollapsed;
       saveConfig();
     });
@@ -1479,7 +1484,8 @@ STATS:
     // Apply saved collapse state
     if (config.sidebarCollapsed) {
       sidebar.classList.add("is-collapsed");
-      collapseButton.innerHTML = "▲";
+      collapseButton.textContent = "";
+      collapseButton.appendChild(createSVGIcon("chevron-up", 16));
     }
 
     // Initialize
