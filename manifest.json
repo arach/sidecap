@@ -1,0 +1,18 @@
+{
+  "manifest_version": 3,
+  "name": "Captions",
+  "description": "Practice speaking by showing captions in the same language or translations on YouTube.",
+  "version": "0.2.0",
+  "permissions": ["storage"],
+  "content_scripts": [
+    {
+      "matches": [
+        "https://www.youtube.com/*",
+        "https://m.youtube.com/*"
+      ],
+      "js": ["v2/Content-v2.js"],
+      "css": ["v2/style-v2.css"],
+      "run_at": "document_idle"
+    }
+  ]
+}

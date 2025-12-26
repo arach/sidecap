@@ -1,0 +1,685 @@
+#captions-root-v2 {
+  --v2-bg: rgba(0, 0, 0, 0.85);
+  --v2-bg-light: rgba(20, 20, 20, 0.9);
+  --v2-border: rgba(255, 255, 255, 0.15);
+  --v2-accent: #4a9eff;
+  --v2-accent-hover: #6bb0ff;
+  --v2-text: #ffffff;
+  --v2-text-muted: rgba(255, 255, 255, 0.7);
+  --v2-warning: #ffaa44;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  position: fixed;
+  z-index: 2147483647;
+  color: var(--v2-text);
+}
+
+#captions-root-v2 * {
+  box-sizing: border-box;
+}
+
+/* Main Caption Overlay - Clean and minimal, naturally sized */
+.captions-floating-overlay-v2 {
+  position: fixed;
+  bottom: 8%;
+  left: 50%;
+  transform: translateX(-50%);
+  max-width: min(900px, 85vw);
+  background: rgba(0, 0, 0, 0.75);
+  backdrop-filter: blur(8px) saturate(150%);
+  border-radius: 12px;
+  padding: 16px 24px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+  transition: opacity 0.3s ease;
+  pointer-events: none;
+}
+
+.captions-floating-overlay-v2:has(.captions-overlay-v2.is-caption) {
+  pointer-events: auto;
+}
+
+/* Caption Text - Match YouTube's native presentation exactly */
+.captions-overlay-v2 {
+  color: var(--v2-text);
+  font-size: inherit;
+  line-height: inherit;
+  text-align: left;
+  font-weight: inherit;
+  letter-spacing: inherit;
+  transition: opacity 0.2s ease;
+  word-spacing: inherit;
+  min-height: 50px;
+}
+
+.captions-overlay-v2.is-hidden {
+  opacity: 0;
+}
+
+.captions-overlay-v2.is-caption {
+  cursor: text;
+  /* Natural block layout for captions - no special formatting */
+  display: block;
+}
+
+/* Empty state - polite message when captions are off */
+.captions-overlay-v2.is-empty-state {
+  font-size: 14px;
+  color: var(--v2-text-muted);
+  text-align: center;
+  font-weight: 400;
+  cursor: default;
+  font-style: italic;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.captions-overlay-v2.is-empty-state.is-warning {
+  color: var(--v2-warning);
+}
+
+.captions-word-v2 {
+  display: inline;
+  padding: 2px 3px;
+  margin: 0;
+  border-radius: 3px;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+
+.captions-word-v2:hover {
+  background: var(--v2-accent);
+  color: white;
+}
+
+/* Subtle Branding */
+.captions-branding-v2 {
+  position: absolute;
+  bottom: 8px;
+  right: 12px;
+  font-size: 10px;
+  font-weight: 300;
+  color: rgba(255, 255, 255, 0.3);
+  letter-spacing: 0.5px;
+  text-transform: lowercase;
+  pointer-events: none;
+}
+
+/* Drag Handle */
+.captions-drag-handle-v2 {
+  position: absolute;
+  top: 8px;
+  left: 12px;
+  background: transparent;
+  border: none;
+  color: rgba(255, 255, 255, 0.4);
+  font-size: 16px;
+  cursor: grab;
+  width: 32px;
+  height: 32px;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+  pointer-events: auto;
+  letter-spacing: -2px;
+}
+
+.captions-drag-handle-v2:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.captions-drag-handle-v2:active {
+  cursor: grabbing;
+}
+
+/* History Button */
+.captions-history-button-v2 {
+  position: absolute;
+  top: 8px;
+  right: 52px;
+  background: transparent;
+  border: none;
+  color: rgba(255, 255, 255, 0.5);
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  cursor: pointer;
+  padding: 6px 10px;
+  height: 28px;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+  pointer-events: auto;
+  white-space: nowrap;
+}
+
+.captions-history-button-v2:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: rgba(255, 255, 255, 0.9);
+}
+
+/* Settings Icon */
+.captions-settings-icon-v2 {
+  position: absolute;
+  top: 8px;
+  right: 12px;
+  background: transparent;
+  border: none;
+  color: rgba(255, 255, 255, 0.4);
+  font-size: 18px;
+  cursor: pointer;
+  width: 32px;
+  height: 32px;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+  pointer-events: auto;
+}
+
+.captions-settings-icon-v2:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: rgba(255, 255, 255, 0.8);
+}
+
+/* Settings Panel */
+.captions-settings-panel-v2 {
+  position: fixed;
+  right: 20px;
+  top: 50%;
+  transform: translateY(-50%) translateX(120%);
+  width: min(320px, 40vw);
+  background: var(--v2-bg);
+  backdrop-filter: blur(20px) saturate(180%);
+  border: 1px solid var(--v2-border);
+  border-radius: 16px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+  overflow: hidden;
+  transition: transform 0.3s ease;
+  z-index: 2147483646;
+}
+
+.captions-settings-panel-v2.is-visible {
+  transform: translateY(-50%) translateX(0);
+}
+
+.captions-settings-header-v2 {
+  padding: 16px 20px;
+  background: var(--v2-bg-light);
+  border-bottom: 1px solid var(--v2-border);
+  font-size: 13px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  color: var(--v2-text);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.captions-settings-close-v2 {
+  background: transparent;
+  border: none;
+  color: var(--v2-text-muted);
+  font-size: 28px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0;
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  transition: background 0.2s, color 0.2s;
+  position: absolute;
+  top: 12px;
+  right: 12px;
+}
+
+.captions-settings-close-v2:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--v2-text);
+}
+
+.captions-settings-content-v2 {
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.captions-settings-group-v2 {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.captions-settings-label-v2 {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--v2-text);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.captions-settings-control-v2 {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.captions-settings-slider-v2 {
+  flex: 1;
+  height: 6px;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.1);
+  outline: none;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.captions-settings-slider-v2::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--v2-accent);
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.captions-settings-slider-v2::-webkit-slider-thumb:hover {
+  background: var(--v2-accent-hover);
+  transform: scale(1.1);
+}
+
+.captions-settings-slider-v2::-moz-range-thumb {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--v2-accent);
+  cursor: pointer;
+  border: none;
+  transition: all 0.2s;
+}
+
+.captions-settings-slider-v2::-moz-range-thumb:hover {
+  background: var(--v2-accent-hover);
+  transform: scale(1.1);
+}
+
+.captions-settings-value-v2 {
+  min-width: 50px;
+  text-align: right;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--v2-accent);
+  font-family: "SF Mono", Monaco, monospace;
+}
+
+.captions-settings-select-v2 {
+  flex: 1;
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid var(--v2-border);
+  border-radius: 8px;
+  padding: 8px 12px;
+  color: var(--v2-text);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  outline: none;
+  transition: all 0.2s;
+}
+
+.captions-settings-select-v2:hover {
+  background: rgba(255, 255, 255, 0.15);
+  border-color: var(--v2-accent);
+}
+
+.captions-settings-select-v2:focus {
+  border-color: var(--v2-accent);
+  background: rgba(255, 255, 255, 0.15);
+}
+
+.captions-settings-select-v2 option {
+  background: var(--v2-bg-light);
+  color: var(--v2-text);
+}
+
+/* History Panel */
+.captions-history-panel-v2 {
+  position: fixed;
+  right: 20px;
+  top: 50%;
+  transform: translateY(-50%) translateX(120%);
+  width: min(340px, 42vw);
+  max-height: 65vh;
+  background: var(--v2-bg);
+  backdrop-filter: blur(20px) saturate(180%);
+  border: 1px solid var(--v2-border);
+  border-radius: 16px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+  overflow: hidden;
+  transition: transform 0.3s ease;
+  z-index: 2147483646;
+}
+
+.captions-history-panel-v2.is-visible {
+  transform: translateY(-50%) translateX(0);
+}
+
+.captions-history-header-v2 {
+  padding: 14px 18px;
+  background: var(--v2-bg-light);
+  border-bottom: 1px solid var(--v2-border);
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  color: var(--v2-text);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.captions-history-title-v2 {
+  flex: 1;
+}
+
+.captions-history-copy-v2 {
+  background: transparent;
+  border: none;
+  color: var(--v2-text-muted);
+  font-size: 16px;
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 6px;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.captions-history-copy-v2:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--v2-text);
+}
+
+.captions-history-list-v2 {
+  padding: 10px;
+  max-height: calc(65vh - 52px);
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.captions-history-list-v2::-webkit-scrollbar {
+  width: 8px;
+}
+
+.captions-history-list-v2::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.captions-history-list-v2::-webkit-scrollbar-thumb {
+  background: var(--v2-border);
+  border-radius: 4px;
+}
+
+.captions-history-item-v2 {
+  background: var(--v2-bg-light);
+  border: 1px solid var(--v2-border);
+  border-radius: 8px;
+  padding: 12px 14px;
+  text-align: left;
+  cursor: pointer;
+  transition: all 0.2s;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 100%;
+}
+
+.captions-history-item-v2:hover {
+  background: rgba(74, 158, 255, 0.2);
+  border-color: var(--v2-accent);
+  transform: translateX(4px);
+}
+
+.captions-history-time-v2 {
+  font-size: 11px;
+  color: var(--v2-accent);
+  font-family: "SF Mono", Monaco, monospace;
+  font-weight: 600;
+}
+
+.captions-history-text-v2 {
+  font-size: 14px;
+  color: var(--v2-text);
+  line-height: 1.5;
+}
+
+.captions-history-empty-v2 {
+  color: var(--v2-text-muted);
+  font-size: 13px;
+  text-align: center;
+  padding: 40px 20px;
+}
+
+/* Word Definition Popup */
+.captions-popup-v2 {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.7);
+  backdrop-filter: blur(4px);
+  display: none;
+  align-items: center;
+  justify-content: center;
+  z-index: 2147483648;
+  animation: v2-fade-in 0.2s ease;
+}
+
+.captions-popup-v2.is-open {
+  display: flex;
+}
+
+/* Popup Container */
+.captions-popup-container-v2 {
+  background: var(--v2-bg-light);
+  border: 1px solid var(--v2-border);
+  border-radius: 16px;
+  max-width: min(420px, 90vw);
+  width: 100%;
+  max-height: 70vh;
+  overflow: hidden;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.6);
+  animation: v2-popup-appear 0.3s ease;
+}
+
+/* Compact popup mode - no backdrop, positioned near word */
+.captions-popup-v2.is-compact {
+  background: transparent;
+  backdrop-filter: none;
+  align-items: flex-start;
+  justify-content: flex-start;
+  pointer-events: none;
+}
+
+.captions-popup-v2.is-compact .captions-popup-container-v2 {
+  pointer-events: auto;
+  max-width: 380px;
+  position: fixed;
+}
+
+@keyframes v2-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+
+@keyframes v2-popup-appear {
+  from {
+    opacity: 0;
+    transform: scale(0.95) translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+.captions-popup-header-v2 {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 18px 22px;
+  background: rgba(0, 0, 0, 0.3);
+  border-bottom: 1px solid var(--v2-border);
+}
+
+.captions-popup-word-v2 {
+  font-size: 26px;
+  font-weight: 700;
+  color: var(--v2-text);
+  letter-spacing: -0.5px;
+}
+
+.captions-popup-close-v2 {
+  background: transparent;
+  border: none;
+  color: var(--v2-text-muted);
+  font-size: 32px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  transition: background 0.2s, color 0.2s;
+}
+
+.captions-popup-close-v2:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--v2-text);
+}
+
+.captions-popup-content-v2 {
+  padding: 22px;
+  max-height: calc(70vh - 90px);
+  overflow-y: auto;
+}
+
+.captions-popup-content-v2::-webkit-scrollbar {
+  width: 8px;
+}
+
+.captions-popup-content-v2::-webkit-scrollbar-thumb {
+  background: var(--v2-border);
+  border-radius: 4px;
+}
+
+.captions-popup-loading-v2,
+.captions-popup-error-v2 {
+  text-align: center;
+  padding: 36px;
+  color: var(--v2-text-muted);
+  font-size: 14px;
+}
+
+.captions-popup-error-v2 {
+  color: var(--v2-warning);
+}
+
+.captions-popup-pos-v2 {
+  font-size: 12px;
+  color: var(--v2-accent);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  font-weight: 700;
+  margin-bottom: 18px;
+}
+
+.captions-popup-section-v2 {
+  margin-bottom: 22px;
+}
+
+.captions-popup-section-v2:last-child {
+  margin-bottom: 0;
+}
+
+.captions-popup-label-v2 {
+  font-size: 11px;
+  color: var(--v2-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  font-weight: 700;
+  margin-bottom: 10px;
+}
+
+.captions-popup-value-v2 {
+  font-size: 16px;
+  color: var(--v2-text);
+  line-height: 1.6;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.captions-popup-speak-v2 {
+  background: var(--v2-accent);
+  border: none;
+  color: white;
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  font-size: 16px;
+  cursor: pointer;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.captions-popup-speak-v2:hover {
+  background: var(--v2-accent-hover);
+  transform: scale(1.1);
+}
+
+.captions-popup-speak-v2:active {
+  transform: scale(0.95);
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+  .captions-floating-overlay-v2 {
+    padding: 16px 20px;
+  }
+
+  .captions-overlay-v2 {
+    font-size: 20px;
+  }
+
+  .captions-history-panel-v2 {
+    width: min(300px, 90vw);
+  }
+}
