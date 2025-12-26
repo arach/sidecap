@@ -10,8 +10,8 @@
         "https://www.youtube.com/*",
         "https://m.youtube.com/*"
       ],
-      "js": ["extension/Content-v2.js"],
-      "css": ["extension/style-v2.css"],
+      "js": ["extension/content.js"],
+      "css": ["extension/styles.css"],
       "run_at": "document_idle"
     }
   ]
