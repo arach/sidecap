@@ -803,53 +803,7 @@
     window.speechSynthesis.speak(utterance);
   }
 
-  function getPlayerRect() {
-    const player = document.querySelector("#movie_player, .html5-video-player");
-    if (!player) {
-      return null;
-    }
-    return player.getBoundingClientRect();
-  }
-
-  function updateOverlayPosition() {
-    const overlay = document.getElementById("captions-floating-overlay-v2");
-    if (!overlay) {
-      return;
-    }
-
-    // If user has set custom position, use that instead
-    if (config.customPosition) {
-      overlay.style.top = `${config.customPosition.top}px`;
-      overlay.style.left = `${config.customPosition.left}px`;
-      overlay.style.bottom = "auto";
-      overlay.style.transform = "none";
-      overlay.style.width = `${config.customPosition.width || 'min(900px, 85vw)'}`;
-      return;
-    }
-
-    const rect = getPlayerRect();
-    if (!rect) {
-      // Fallback positioning
-      overlay.style.left = "50%";
-      overlay.style.bottom = "15%";
-      overlay.style.top = "auto";
-      overlay.style.transform = "translateX(-50%)";
-      overlay.style.width = "min(900px, 85vw)";
-      return;
-    }
-
-    // Position overlay at bottom of video player (80% width)
-    // Use 15% from bottom to avoid CC button
-    const overlayWidth = rect.width * 0.8;
-    const left = rect.left + (rect.width - overlayWidth) / 2;
-    const bottom = window.innerHeight - rect.bottom + (rect.height * 0.15); // 15% from video bottom
-
-    overlay.style.left = `${left}px`;
-    overlay.style.bottom = `${bottom}px`;
-    overlay.style.top = "auto";
-    overlay.style.transform = "none";
-    overlay.style.width = `${overlayWidth}px`;
-  }
+  // Sidebar is fixed position - no dynamic positioning needed
 
   function mount() {
     if (!document.body || document.getElementById(ROOT_ID)) {
@@ -859,43 +813,36 @@
     const root = createElement("div");
     root.id = ROOT_ID;
 
-    // Main Caption Overlay Container
-    const floatingOverlay = createElement("div", "captions-floating-overlay-v2");
-    floatingOverlay.id = "captions-floating-overlay-v2";
+    // Sidebar Container (replaces floating overlay)
+    const sidebar = createElement("div", "captions-sidebar-v2");
+    sidebar.id = "captions-sidebar-v2";
 
-    // Caption display
-    const overlay = createElement("div", "captions-overlay-v2");
-    overlay.id = OVERLAY_ID;
-    overlay.setAttribute("aria-live", "polite");
-    overlay.textContent = "";
+    // Title Bar with shade toggle
+    const titleBar = createElement("div", "captions-titlebar-v2");
 
-    // Subtle branding
-    const branding = createElement("div", "captions-branding-v2");
-    branding.textContent = "by captions";
+    const titleLeft = createElement("div", "captions-titlebar-left-v2");
+    const titleText = createElement("div", "captions-titlebar-text-v2");
+    titleText.textContent = "Captions";
 
-    // Drag handle
-    const dragHandle = createElement("button", "captions-drag-handle-v2");
-    dragHandle.type = "button";
-    dragHandle.innerHTML = "⋮⋮";
-    dragHandle.title = "Drag to reposition";
-
-    // History toggle button
-    const historyButton = createElement("button", "captions-history-button-v2");
-    historyButton.type = "button";
-    historyButton.textContent = "History";
-    historyButton.title = "Toggle Transcript History";
-
-    // Settings icon
     const settingsIcon = createElement("button", "captions-settings-icon-v2");
     settingsIcon.type = "button";
     settingsIcon.appendChild(createSVGIcon("settings", 18));
     settingsIcon.title = "Settings";
 
-    floatingOverlay.append(overlay, branding, dragHandle, historyButton, settingsIcon);
+    titleLeft.append(titleText, settingsIcon);
 
-    // History Panel (collapsible)
-    const historyPanel = createElement("div", "captions-history-panel-v2");
-    historyPanel.id = "captions-history-panel-v2";
+    const collapseButton = createElement("button", "captions-collapse-button-v2");
+    collapseButton.type = "button";
+    collapseButton.innerHTML = "▼";
+    collapseButton.title = "Collapse/Expand";
+
+    titleBar.append(titleLeft, collapseButton);
+
+    // Content area (collapsible)
+    const sidebarContent = createElement("div", "captions-sidebar-content-v2");
+
+    // History Section (integrated into sidebar)
+    const historySection = createElement("div", "captions-history-section-v2");
 
     const historyHeader = createElement("div", "captions-history-header-v2");
 
@@ -926,7 +873,21 @@
     const historyList = createElement("div", "captions-history-list-v2");
     historyList.id = "captions-history-list-v2";
 
-    historyPanel.append(historyHeader, historyList);
+    historySection.append(historyHeader, historyList);
+
+    // Caption Section (integrated into sidebar)
+    const captionSection = createElement("div", "captions-caption-section-v2");
+
+    const overlay = createElement("div", "captions-overlay-v2");
+    overlay.id = OVERLAY_ID;
+    overlay.setAttribute("aria-live", "polite");
+    overlay.textContent = "";
+
+    captionSection.appendChild(overlay);
+
+    // Assemble sidebar
+    sidebarContent.append(historySection, captionSection);
+    sidebar.append(titleBar, sidebarContent);
 
     // Word Definition Popup
     const popup = createElement("div", "captions-popup-v2");
@@ -989,39 +950,6 @@
     fontSizeControl.append(fontSizeSlider, fontSizeValue);
     fontSizeGroup.append(fontSizeLabel, fontSizeControl);
 
-    // Opacity Control
-    const opacityGroup = createElement("div", "captions-settings-group-v2");
-    const opacityLabel = createElement("label", "captions-settings-label-v2");
-    opacityLabel.textContent = "Opacity";
-    const opacityControl = createElement("div", "captions-settings-control-v2");
-    const opacitySlider = createElement("input", "captions-settings-slider-v2");
-    opacitySlider.type = "range";
-    opacitySlider.min = "0.3";
-    opacitySlider.max = "1";
-    opacitySlider.step = "0.05";
-    opacitySlider.value = config.opacity.toString();
-    opacitySlider.id = "opacity-slider";
-    const opacityValue = createElement("span", "captions-settings-value-v2");
-    opacityValue.textContent = `${Math.round(config.opacity * 100)}%`;
-    opacityControl.append(opacitySlider, opacityValue);
-    opacityGroup.append(opacityLabel, opacityControl);
-
-    // Blur Control
-    const blurGroup = createElement("div", "captions-settings-group-v2");
-    const blurLabel = createElement("label", "captions-settings-label-v2");
-    blurLabel.textContent = "Background Blur";
-    const blurControl = createElement("div", "captions-settings-control-v2");
-    const blurSlider = createElement("input", "captions-settings-slider-v2");
-    blurSlider.type = "range";
-    blurSlider.min = "0";
-    blurSlider.max = "20";
-    blurSlider.value = config.blur.toString();
-    blurSlider.id = "blur-slider";
-    const blurValue = createElement("span", "captions-settings-value-v2");
-    blurValue.textContent = `${config.blur}px`;
-    blurControl.append(blurSlider, blurValue);
-    blurGroup.append(blurLabel, blurControl);
-
     // Dictionary Language Control
     const langGroup = createElement("div", "captions-settings-group-v2");
     const langLabel = createElement("label", "captions-settings-label-v2");
@@ -1067,68 +995,22 @@
     langControl.appendChild(langSelect);
     langGroup.append(langLabel, langControl);
 
-    settingsContent.append(fontSizeGroup, opacityGroup, blurGroup, langGroup);
+    settingsContent.append(fontSizeGroup, langGroup);
     settingsPanel.append(settingsHeader, settingsClose, settingsContent);
 
     // Assemble
-    root.append(floatingOverlay, historyPanel, popup, settingsPanel);
+    root.append(sidebar, popup, settingsPanel);
     document.body.appendChild(root);
 
     // Event Handlers
 
-    // Drag functionality
-    dragHandle.addEventListener("mousedown", (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      state.isDragging = true;
-      state.dragStartX = e.clientX;
-      state.dragStartY = e.clientY;
-
-      const rect = floatingOverlay.getBoundingClientRect();
-      state.dragStartTop = rect.top;
-      state.dragStartLeft = rect.left;
-
-      floatingOverlay.style.cursor = "grabbing";
-      dragHandle.style.cursor = "grabbing";
-    });
-
-    document.addEventListener("mousemove", (e) => {
-      if (!state.isDragging) return;
-
-      const deltaX = e.clientX - state.dragStartX;
-      const deltaY = e.clientY - state.dragStartY;
-
-      const newTop = state.dragStartTop + deltaY;
-      const newLeft = state.dragStartLeft + deltaX;
-
-      // Apply position
-      floatingOverlay.style.top = `${newTop}px`;
-      floatingOverlay.style.left = `${newLeft}px`;
-      floatingOverlay.style.bottom = "auto";
-      floatingOverlay.style.transform = "none";
-    });
-
-    document.addEventListener("mouseup", () => {
-      if (state.isDragging) {
-        state.isDragging = false;
-        floatingOverlay.style.cursor = "";
-        dragHandle.style.cursor = "grab";
-
-        // Save custom position
-        const rect = floatingOverlay.getBoundingClientRect();
-        config.customPosition = {
-          top: rect.top,
-          left: rect.left,
-          width: `${rect.width}px`
-        };
-        saveConfig();
-      }
-    });
-
-    // History button click
-    historyButton.addEventListener("click", (e) => {
-      e.stopPropagation();
-      historyPanel.classList.toggle("is-visible");
+    // Collapse/Shade toggle
+    collapseButton.addEventListener("click", () => {
+      sidebar.classList.toggle("is-collapsed");
+      const isCollapsed = sidebar.classList.contains("is-collapsed");
+      collapseButton.innerHTML = isCollapsed ? "▲" : "▼";
+      config.sidebarCollapsed = isCollapsed;
+      saveConfig();
     });
 
     // History copy button click
@@ -1256,25 +1138,6 @@ STATS:
       config.fontSize = value;
       fontSizeValue.textContent = `${value}px`;
       overlay.style.fontSize = `${value}px`;
-      saveConfig();
-    });
-
-    // Opacity slider
-    opacitySlider.addEventListener("input", (e) => {
-      const value = parseFloat(e.target.value);
-      config.opacity = value;
-      opacityValue.textContent = `${Math.round(value * 100)}%`;
-      floatingOverlay.style.opacity = value.toString();
-      saveConfig();
-    });
-
-    // Blur slider
-    blurSlider.addEventListener("input", (e) => {
-      const value = parseInt(e.target.value, 10);
-      config.blur = value;
-      blurValue.textContent = `${value}px`;
-      const currentBackdrop = floatingOverlay.style.backdropFilter || "";
-      floatingOverlay.style.backdropFilter = `blur(${value}px) saturate(150%)`;
       saveConfig();
     });
 
@@ -1499,15 +1362,18 @@ STATS:
 
     // Initialize styles from config
     overlay.style.fontSize = `${config.fontSize}px`;
-    floatingOverlay.style.opacity = config.opacity.toString();
-    floatingOverlay.style.backdropFilter = `blur(${config.blur}px) saturate(150%)`;
+
+    // Apply saved collapse state
+    if (config.sidebarCollapsed) {
+      sidebar.classList.add("is-collapsed");
+      collapseButton.innerHTML = "▲";
+    }
 
     // Initialize
     checkVideoChange();  // Set initial video ID
     renderHistory();
     attachCaptionObserver(overlay);
     applyOverlayState(overlay, getOverlayState());
-    updateOverlayPosition();
 
     // Polling and updates
     setInterval(() => {
@@ -1532,9 +1398,6 @@ STATS:
         state.lastSeenTime = 0;
       }
     }, 3000);
-
-    window.addEventListener("resize", updateOverlayPosition);
-    window.addEventListener("scroll", updateOverlayPosition, true);
   }
 
   if (document.readyState === "loading") {

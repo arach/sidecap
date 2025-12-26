@@ -17,37 +17,110 @@
   box-sizing: border-box;
 }
 
-/* Main Caption Overlay - Clean and minimal, naturally sized */
-.captions-floating-overlay-v2 {
-  position: fixed;
-  bottom: 8%;
-  left: 50%;
-  transform: translateX(-50%);
-  max-width: min(900px, 85vw);
-  background: rgba(0, 0, 0, 0.75);
-  backdrop-filter: blur(8px) saturate(150%);
-  border-radius: 12px;
-  padding: 16px 24px;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
-  transition: opacity 0.3s ease;
-  pointer-events: none;
+/* Hide YouTube's native captions */
+.ytp-caption-window-container {
+  display: none !important;
 }
 
-.captions-floating-overlay-v2:has(.captions-overlay-v2.is-caption) {
-  pointer-events: auto;
+/* Sidebar - Replaces floating overlay */
+.captions-sidebar-v2 {
+  position: fixed;
+  top: 56px; /* Below YouTube header */
+  right: 0;
+  width: 402px; /* Same as YouTube recommendations sidebar */
+  height: calc(100vh - 56px);
+  background: rgba(0, 0, 0, 0.95);
+  backdrop-filter: blur(12px) saturate(150%);
+  border-left: 1px solid rgba(255, 255, 255, 0.1);
+  display: flex;
+  flex-direction: column;
+  z-index: 2147483646;
+  transition: transform 0.3s ease;
+}
+
+.captions-sidebar-v2.is-collapsed .captions-sidebar-content-v2 {
+  display: none;
+}
+
+/* Title Bar */
+.captions-titlebar-v2 {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--v2-border);
+  background: rgba(0, 0, 0, 0.6);
+  flex-shrink: 0;
+}
+
+.captions-titlebar-left-v2 {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.captions-titlebar-text-v2 {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--v2-text);
+  letter-spacing: -0.3px;
+}
+
+.captions-collapse-button-v2 {
+  background: transparent;
+  border: none;
+  color: var(--v2-text-muted);
+  font-size: 16px;
+  cursor: pointer;
+  padding: 8px;
+  border-radius: 6px;
+  transition: all 0.2s;
+}
+
+.captions-collapse-button-v2:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--v2-text);
+}
+
+/* Sidebar Content */
+.captions-sidebar-content-v2 {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* History Section - Upper part, scrollable */
+.captions-history-section-v2 {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border-bottom: 1px solid var(--v2-border);
+}
+
+/* Caption Section - Lower part, fixed */
+.captions-caption-section-v2 {
+  flex-shrink: 0;
+  padding: 20px;
+  min-height: 150px;
+  max-height: 250px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 /* Caption Text - Match YouTube's native presentation exactly */
 .captions-overlay-v2 {
   color: var(--v2-text);
-  font-size: inherit;
-  line-height: inherit;
-  text-align: left;
-  font-weight: inherit;
-  letter-spacing: inherit;
+  font-size: 24px;
+  line-height: 1.5;
+  text-align: center;
+  font-weight: 400;
+  letter-spacing: 0;
   transition: opacity 0.2s ease;
-  word-spacing: inherit;
-  min-height: 50px;
+  word-spacing: normal;
+  width: 100%;
 }
 
 .captions-overlay-v2.is-hidden {
@@ -354,40 +427,20 @@
   color: var(--v2-text);
 }
 
-/* History Panel */
-.captions-history-panel-v2 {
-  position: fixed;
-  right: 20px;
-  top: 50%;
-  transform: translateY(-50%) translateX(120%);
-  width: min(340px, 42vw);
-  max-height: 65vh;
-  background: var(--v2-bg);
-  backdrop-filter: blur(20px) saturate(180%);
-  border: 1px solid var(--v2-border);
-  border-radius: 16px;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
-  overflow: hidden;
-  transition: transform 0.3s ease;
-  z-index: 2147483646;
-}
-
-.captions-history-panel-v2.is-visible {
-  transform: translateY(-50%) translateX(0);
-}
-
+/* History Header - Now part of sidebar */
 .captions-history-header-v2 {
-  padding: 14px 18px;
-  background: var(--v2-bg-light);
+  padding: 12px 16px;
+  background: rgba(0, 0, 0, 0.4);
   border-bottom: 1px solid var(--v2-border);
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.8px;
-  color: var(--v2-text);
+  color: var(--v2-text-muted);
   display: flex;
   align-items: center;
   justify-content: space-between;
+  flex-shrink: 0;
 }
 
 .captions-history-title-v2 {
@@ -414,11 +467,11 @@
 }
 
 .captions-history-list-v2 {
-  padding: 10px;
-  max-height: calc(65vh - 52px);
+  padding: 12px;
+  flex: 1;
   overflow-y: auto;
   display: flex;
-  flex-direction: column;
+  flex-direction: column-reverse; /* New items at bottom, scrolls upward */
   gap: 8px;
 }
 
