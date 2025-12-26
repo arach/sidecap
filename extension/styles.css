@@ -482,16 +482,25 @@
   left: 0;
   right: 0;
   bottom: 0;
-  background: rgba(0, 0, 0, 0.2);
-  backdrop-filter: blur(8px);
   display: none;
   z-index: 2147483648;
-  animation: v2-fade-in 0.2s ease;
-  padding: 16px;
+  pointer-events: none;
 }
 
 .captions-popup-v2.is-open {
   display: block;
+}
+
+/* Subtle backdrop */
+.captions-popup-backdrop-v2 {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.15);
+  pointer-events: auto;
+  cursor: default;
 }
 
 /* Popup Container */
@@ -504,8 +513,9 @@
   width: 420px;
   max-height: 80vh;
   overflow: hidden;
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+  box-shadow: 0 25px 70px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(0, 0, 0, 0.05);
   animation: v2-popup-appear 0.3s ease;
+  pointer-events: auto;
 }
 
 /* Compact popup mode - no backdrop, positioned near word */

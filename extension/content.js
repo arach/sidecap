@@ -758,7 +758,10 @@
       }
       state.captionContainer = container;
       state.captionObserver = new MutationObserver(() => {
-        applyOverlayState(overlay, getOverlayState());
+        // Don't update overlay while popup is open to prevent captions from disappearing
+        if (!state.popupOpen) {
+          applyOverlayState(overlay, getOverlayState());
+        }
       });
       state.captionObserver.observe(container, {
         childList: true,
@@ -929,6 +932,7 @@
     const popup = createElement("div", "captions-popup-v2");
     popup.id = "captions-popup-v2";
 
+    const popupBackdrop = createElement("div", "captions-popup-backdrop-v2");
     const popupContainer = createElement("div", "captions-popup-container-v2");
 
     const popupHeader = createElement("div", "captions-popup-header-v2");
@@ -953,7 +957,7 @@
     const popupArrow = createElement("div", "captions-popup-arrow-v2");
 
     popupContainer.append(popupHeader, popupContent, popupArrow);
-    popup.appendChild(popupContainer);
+    popup.append(popupBackdrop, popupContainer);
 
     // Settings Panel
     const settingsPanel = createElement("div", "captions-settings-panel-v2");
@@ -1369,13 +1373,23 @@ STATS:
     popupClose.addEventListener("click", () => {
       popup.classList.remove("is-open");
       state.popupOpen = false;
+      // Refresh overlay state when popup closes
+      applyOverlayState(overlay, getOverlayState());
     });
 
-    // Click outside to close popup
-    popup.addEventListener("click", (event) => {
-      if (event.target === popup) {
+    // Click backdrop to close popup
+    popupBackdrop.addEventListener("click", () => {
+      popup.classList.remove("is-open");
+      state.popupOpen = false;
+      applyOverlayState(overlay, getOverlayState());
+    });
+
+    // ESC key to close popup
+    document.addEventListener("keydown", (event) => {
+      if (event.key === "Escape" && state.popupOpen) {
         popup.classList.remove("is-open");
         state.popupOpen = false;
+        applyOverlayState(overlay, getOverlayState());
       }
     });
 
