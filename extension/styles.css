@@ -82,6 +82,53 @@
   color: var(--v2-text);
 }
 
+/* Floating Caption Overlay - At bottom of video player */
+.captions-floating-overlay-v2 {
+  position: fixed;
+  bottom: 8%;
+  left: 50%;
+  transform: translateX(-50%);
+  max-width: min(900px, 85vw);
+  background: rgba(0, 0, 0, 0.85);
+  backdrop-filter: blur(12px) saturate(150%);
+  border-radius: 12px;
+  padding: 16px 24px 16px 48px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+  transition: opacity 0.3s ease;
+  pointer-events: none;
+  z-index: 2147483645;
+}
+
+.captions-floating-overlay-v2:has(.captions-overlay-v2.is-caption) {
+  pointer-events: auto;
+}
+
+/* Drag Handle */
+.captions-drag-handle-v2 {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  background: transparent;
+  border: none;
+  color: rgba(255, 255, 255, 0.4);
+  font-size: 16px;
+  line-height: 1;
+  cursor: grab;
+  padding: 8px 6px;
+  border-radius: 6px;
+  transition: all 0.2s;
+  letter-spacing: -2px;
+}
+
+.captions-drag-handle-v2:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.captions-drag-handle-v2:active {
+  cursor: grabbing;
+}
+
 /* Sidebar Content */
 .captions-sidebar-content-v2 {
   flex: 1;
@@ -99,28 +146,17 @@
   border-bottom: 1px solid var(--v2-border);
 }
 
-/* Caption Section - Lower part, fixed */
-.captions-caption-section-v2 {
-  flex-shrink: 0;
-  padding: 20px;
-  min-height: 150px;
-  max-height: 250px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-/* Caption Text - Match YouTube's native presentation exactly */
+/* Caption Text (in floating overlay) */
 .captions-overlay-v2 {
   color: var(--v2-text);
-  font-size: 24px;
-  line-height: 1.5;
-  text-align: center;
-  font-weight: 400;
-  letter-spacing: 0;
+  font-size: inherit;
+  line-height: inherit;
+  text-align: left;
+  font-weight: inherit;
+  letter-spacing: inherit;
   transition: opacity 0.2s ease;
-  word-spacing: normal;
-  width: 100%;
+  word-spacing: inherit;
+  min-height: 50px;
 }
 
 .captions-overlay-v2.is-hidden {

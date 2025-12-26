@@ -78,11 +78,10 @@
         <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
       `;
     } else if (type === "settings") {
-      // Gear icon
+      // Proper gear/cog icon
       svg.innerHTML = `
         <circle cx="12" cy="12" r="3"></circle>
-        <path d="M12 1v6m0 6v6m4.22-13a10 10 0 0 1 0 14M7.78 6a10 10 0 0 0 0 12"></path>
-        <path d="M19.78 12h-3.56m-8.44 0H4.22"></path>
+        <path d="M12 1v6m0 6v6M5.64 5.64l4.24 4.24m4.24 4.24l4.24 4.24M1 12h6m6 0h6M5.64 18.36l4.24-4.24m4.24-4.24l4.24-4.24"></path>
       `;
     } else if (type === "history") {
       // Clock/History icon
@@ -799,11 +798,70 @@
     }
     const utterance = new SpeechSynthesisUtterance(word);
     utterance.lang = language || "en-US";
+    utterance.rate = 1.0;
+    utterance.pitch = 1.0;
+    utterance.volume = 1.0;
+
+    // Try to pick a good voice
+    const voices = window.speechSynthesis.getVoices();
+    if (voices.length > 0) {
+      const preferred = voices.find(v => /Samantha|Google|Premium/.test(v.name));
+      if (preferred) {
+        utterance.voice = preferred;
+      }
+    }
+
     window.speechSynthesis.cancel();
     window.speechSynthesis.speak(utterance);
   }
 
-  // Sidebar is fixed position - no dynamic positioning needed
+  function getPlayerRect() {
+    const player = document.querySelector("#movie_player, .html5-video-player");
+    if (!player) {
+      return null;
+    }
+    return player.getBoundingClientRect();
+  }
+
+  function updateOverlayPosition() {
+    const overlay = document.getElementById("captions-floating-overlay-v2");
+    if (!overlay) {
+      return;
+    }
+
+    // If user has set custom position, use that instead
+    if (config.customPosition) {
+      overlay.style.top = `${config.customPosition.top}px`;
+      overlay.style.left = `${config.customPosition.left}px`;
+      overlay.style.bottom = "auto";
+      overlay.style.transform = "none";
+      overlay.style.width = `${config.customPosition.width || 'min(900px, 85vw)'}`;
+      return;
+    }
+
+    const rect = getPlayerRect();
+    if (!rect) {
+      // Fallback positioning
+      overlay.style.left = "50%";
+      overlay.style.bottom = "15%";
+      overlay.style.top = "auto";
+      overlay.style.transform = "translateX(-50%)";
+      overlay.style.width = "min(900px, 85vw)";
+      return;
+    }
+
+    // Position overlay at bottom of video player (80% width)
+    // Use 15% from bottom to avoid CC button
+    const overlayWidth = rect.width * 0.8;
+    const left = rect.left + (rect.width - overlayWidth) / 2;
+    const bottom = window.innerHeight - rect.bottom + (rect.height * 0.15); // 15% from video bottom
+
+    overlay.style.left = `${left}px`;
+    overlay.style.bottom = `${bottom}px`;
+    overlay.style.top = "auto";
+    overlay.style.transform = "none";
+    overlay.style.width = `${overlayWidth}px`;
+  }
 
   function mount() {
     if (!document.body || document.getElementById(ROOT_ID)) {
@@ -875,19 +933,25 @@
 
     historySection.append(historyHeader, historyList);
 
-    // Caption Section (integrated into sidebar)
-    const captionSection = createElement("div", "captions-caption-section-v2");
+    // Assemble sidebar (history only for now)
+    sidebarContent.append(historySection);
+    sidebar.append(titleBar, sidebarContent);
+
+    // Floating Caption Overlay (default position - bottom of video)
+    const floatingOverlay = createElement("div", "captions-floating-overlay-v2");
+    floatingOverlay.id = "captions-floating-overlay-v2";
 
     const overlay = createElement("div", "captions-overlay-v2");
     overlay.id = OVERLAY_ID;
     overlay.setAttribute("aria-live", "polite");
     overlay.textContent = "";
 
-    captionSection.appendChild(overlay);
+    const dragHandle = createElement("button", "captions-drag-handle-v2");
+    dragHandle.type = "button";
+    dragHandle.innerHTML = "⋮⋮";
+    dragHandle.title = "Drag to reposition";
 
-    // Assemble sidebar
-    sidebarContent.append(historySection, captionSection);
-    sidebar.append(titleBar, sidebarContent);
+    floatingOverlay.append(dragHandle, overlay);
 
     // Word Definition Popup
     const popup = createElement("div", "captions-popup-v2");
@@ -999,7 +1063,7 @@
     settingsPanel.append(settingsHeader, settingsClose, settingsContent);
 
     // Assemble
-    root.append(sidebar, popup, settingsPanel);
+    root.append(sidebar, floatingOverlay, popup, settingsPanel);
     document.body.appendChild(root);
 
     // Event Handlers
@@ -1011,6 +1075,55 @@
       collapseButton.innerHTML = isCollapsed ? "▲" : "▼";
       config.sidebarCollapsed = isCollapsed;
       saveConfig();
+    });
+
+    // Drag functionality for floating overlay
+    dragHandle.addEventListener("mousedown", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      state.isDragging = true;
+      state.dragStartX = e.clientX;
+      state.dragStartY = e.clientY;
+
+      const rect = floatingOverlay.getBoundingClientRect();
+      state.dragStartTop = rect.top;
+      state.dragStartLeft = rect.left;
+
+      floatingOverlay.style.cursor = "grabbing";
+      dragHandle.style.cursor = "grabbing";
+    });
+
+    document.addEventListener("mousemove", (e) => {
+      if (!state.isDragging) return;
+
+      const deltaX = e.clientX - state.dragStartX;
+      const deltaY = e.clientY - state.dragStartY;
+
+      const newTop = state.dragStartTop + deltaY;
+      const newLeft = state.dragStartLeft + deltaX;
+
+      // Apply position
+      floatingOverlay.style.top = `${newTop}px`;
+      floatingOverlay.style.left = `${newLeft}px`;
+      floatingOverlay.style.bottom = "auto";
+      floatingOverlay.style.transform = "none";
+    });
+
+    document.addEventListener("mouseup", () => {
+      if (state.isDragging) {
+        state.isDragging = false;
+        floatingOverlay.style.cursor = "";
+        dragHandle.style.cursor = "grab";
+
+        // Save custom position
+        const rect = floatingOverlay.getBoundingClientRect();
+        config.customPosition = {
+          top: rect.top,
+          left: rect.left,
+          width: `${rect.width}px`
+        };
+        saveConfig();
+      }
     });
 
     // History copy button click
@@ -1374,6 +1487,7 @@ STATS:
     renderHistory();
     attachCaptionObserver(overlay);
     applyOverlayState(overlay, getOverlayState());
+    updateOverlayPosition();
 
     // Polling and updates
     setInterval(() => {
@@ -1381,6 +1495,10 @@ STATS:
       attachCaptionObserver(overlay);
       applyOverlayState(overlay, getOverlayState());
     }, CAPTION_POLL_MS);
+
+    // Update overlay position on resize/scroll
+    window.addEventListener("resize", updateOverlayPosition);
+    window.addEventListener("scroll", updateOverlayPosition, true);
 
     // Backup: flush if text has been showing for too long
     setInterval(() => {
