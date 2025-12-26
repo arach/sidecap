@@ -4,7 +4,7 @@
   const CAPTION_POLL_MS = 500;
   const REPLAY_BACK_SECONDS = 1.6;
   const STATUS_FLASH_MS = 1600;
-  const DICTIONARY_API_BASE = "https://freedictionaryapi.com/api/v1/entries";
+  const DICTIONARY_API_BASE = "https://api.dictionaryapi.dev/api/v2/entries";
   const DICTIONARY_CACHE_TTL_MS = 60 * 60 * 1000;
   const CONTROL_SEEK_SECONDS = 5;
 
@@ -173,9 +173,7 @@
   }
 
   async function fetchDictionaryEntry(word, language) {
-    const url = `${DICTIONARY_API_BASE}/${language}/${encodeURIComponent(
-      word
-    )}?translations=false`;
+    const url = `${DICTIONARY_API_BASE}/${language}/${encodeURIComponent(word.toLowerCase())}`;
     const response = await fetch(url);
     if (!response.ok) {
       throw new Error(`Dictionary lookup failed (${response.status}).`);
@@ -184,23 +182,41 @@
   }
 
   function parseDictionaryData(data) {
-    const entry = data?.entries?.[0];
-    const senses = entry?.senses || [];
-    const definitions = senses
-      .map((sense) => sense.definition)
-      .filter(Boolean)
-      .slice(0, 2); // Only top 2 definitions
+    // dictionaryapi.dev returns an array of entries
+    const entry = data[0];
+    if (!entry) {
+      return {
+        word: "",
+        partOfSpeech: "",
+        pronunciations: [],
+        definitions: [],
+        examples: [],
+        audioUrl: null,
+      };
+    }
 
-    const pronunciations = (entry?.pronunciations || [])
-      .map((p) => p?.text)
-      .filter(Boolean)
-      .slice(0, 1); // Only first pronunciation
+    // Get phonetic (try multiple sources)
+    const phonetic = entry.phonetic || entry.phonetics?.find(p => p.text)?.text || "";
+
+    // Get audio URL if available
+    const audioUrl = entry.phonetics?.find(p => p.audio && p.audio !== "")?.audio || null;
+
+    // Get meanings
+    const meanings = entry.meanings || [];
+    const firstMeaning = meanings[0] || {};
+
+    // Extract definitions and examples
+    const defs = firstMeaning.definitions || [];
+    const definitions = defs.map(d => d.definition).filter(Boolean);
+    const examples = defs.map(d => d.example).filter(Boolean);
 
     return {
-      word: entry?.word || "",
-      partOfSpeech: entry?.partOfSpeech || "",
-      pronunciations,
-      definitions,
+      word: entry.word || "",
+      partOfSpeech: firstMeaning.partOfSpeech || "",
+      pronunciations: phonetic ? [phonetic] : [],
+      definitions: definitions.slice(0, 3), // Top 3 definitions
+      examples: examples.slice(0, 2), // Top 2 examples
+      audioUrl,
     };
   }
 
@@ -752,7 +768,25 @@
     }
   }
 
-  function speakWord(word, language) {
+  function speakWord(word, language, audioUrl = null) {
+    if (!word) {
+      return;
+    }
+
+    // Try to play native audio from API first
+    if (audioUrl) {
+      const audio = new Audio(audioUrl);
+      audio.play().catch(err => {
+        console.warn("Failed to play native audio, falling back to speech synthesis:", err);
+        useSpeechSynthesis(word, language);
+      });
+    } else {
+      // No audio URL available, use speech synthesis
+      useSpeechSynthesis(word, language);
+    }
+  }
+
+  function useSpeechSynthesis(word, language) {
     if (!("speechSynthesis" in window)) {
       flashStatus("Speech not supported");
       return;
@@ -898,18 +932,27 @@
     const popupContainer = createElement("div", "captions-popup-container-v2");
 
     const popupHeader = createElement("div", "captions-popup-header-v2");
-    const popupWord = createElement("div", "captions-popup-word-v2");
+
+    const popupHeaderLeft = createElement("div");
+    const popupTitle = createElement("div", "captions-popup-title-v2");
+    popupTitle.textContent = "Word Analysis";
+    popupHeaderLeft.appendChild(popupTitle);
+
     const popupClose = createElement("button", "captions-popup-close-v2");
     popupClose.type = "button";
     popupClose.innerHTML = "×";
-    popupHeader.append(popupWord, popupClose);
+
+    popupHeader.append(popupHeaderLeft, popupClose);
 
     const popupContent = createElement("div", "captions-popup-content-v2");
     const popupLoading = createElement("div", "captions-popup-loading-v2");
     popupLoading.textContent = "Loading...";
     popupContent.appendChild(popupLoading);
 
-    popupContainer.append(popupHeader, popupContent);
+    // Arrow pointing down to the word
+    const popupArrow = createElement("div", "captions-popup-arrow-v2");
+
+    popupContainer.append(popupHeader, popupContent, popupArrow);
     popup.appendChild(popupContainer);
 
     // Settings Panel
@@ -1264,34 +1307,36 @@ STATS:
 
       // Show popup
       popup.classList.add("is-open");
-      popup.classList.toggle("is-compact", config.popupMode === "compact");
 
-      // Position popup near word if in compact mode
-      if (config.popupMode === "compact") {
-        const wordRect = wordEl.getBoundingClientRect();
-        const container = popup.querySelector(".captions-popup-container-v2");
-        if (container) {
-          const left = Math.min(
-            wordRect.left,
-            window.innerWidth - 400 // max popup width
-          );
-          const top = wordRect.bottom + 10; // 10px below word
+      // Position popup above the clicked word
+      const wordRect = wordEl.getBoundingClientRect();
+      const container = popup.querySelector(".captions-popup-container-v2");
+      const arrow = popup.querySelector(".captions-popup-arrow-v2");
 
-          container.style.left = `${left}px`;
-          container.style.top = `${top}px`;
-        }
-      } else {
-        // Reset positioning for fullscreen mode
-        const container = popup.querySelector(".captions-popup-container-v2");
-        if (container) {
-          container.style.left = "";
-          container.style.top = "";
+      if (container) {
+        const popupWidth = 420; // max-width from CSS
+        const popupHeight = 400; // estimated
+        const arrowSize = 12; // arrow height in pixels
+
+        // Center popup horizontally over the word, but keep it on screen
+        let left = wordRect.left + (wordRect.width / 2) - (popupWidth / 2);
+        left = Math.max(20, Math.min(left, window.innerWidth - popupWidth - 20));
+
+        // Position above the word with gap for arrow
+        const top = wordRect.top - popupHeight - arrowSize - 10;
+
+        container.style.left = `${left}px`;
+        container.style.top = `${Math.max(20, top)}px`;
+
+        // Position arrow to point at the word center
+        if (arrow) {
+          const arrowLeft = wordRect.left + (wordRect.width / 2) - left - 12; // 12 = half arrow width
+          arrow.style.left = `${arrowLeft}px`;
         }
       }
 
       state.popupOpen = true;
-      popupWord.textContent = wordText;
-      popupContent.innerHTML = '<div class="captions-popup-loading-v2">Loading...</div>';
+      popupContent.innerHTML = '<div class="captions-popup-loading-v2">Loading definition...</div>';
 
       // Lookup word
       const language = config.dictionaryLang || "en";
@@ -1337,44 +1382,78 @@ STATS:
     function renderPopupContent(container, parsed) {
       container.textContent = "";
 
-      if (parsed.partOfSpeech) {
-        const pos = createElement("div", "captions-popup-pos-v2");
-        pos.textContent = parsed.partOfSpeech;
-        container.appendChild(pos);
-      }
+      // Word header with phonetic and pronunciation button
+      const wordHeader = createElement("div");
+      wordHeader.style.display = "flex";
+      wordHeader.style.alignItems = "center";
+      wordHeader.style.justifyContent = "space-between";
+      wordHeader.style.marginBottom = "20px";
 
-      if (parsed.pronunciations.length) {
-        const pronDiv = createElement("div", "captions-popup-section-v2");
-        const pronLabel = createElement("div", "captions-popup-label-v2");
-        pronLabel.textContent = "Pronunciation";
-        const pronValue = createElement("div", "captions-popup-value-v2");
-        pronValue.textContent = `/${parsed.pronunciations[0]}/`;
+      const wordInfo = createElement("div");
+      const wordEl = createElement("div", "captions-popup-word-v2");
+      wordEl.textContent = parsed.word;
 
-        const speakBtn = createElement("button", "captions-popup-speak-v2");
-        speakBtn.type = "button";
-        speakBtn.innerHTML = "🔊";
-        speakBtn.addEventListener("click", () => {
-          speakWord(parsed.word, config.dictionaryLang);
-        });
+      const phoneticEl = createElement("div", "captions-popup-phonetic-v2");
+      phoneticEl.textContent = parsed.pronunciations.length ? `/${parsed.pronunciations[0]}/` : "";
 
-        pronValue.appendChild(speakBtn);
-        pronDiv.append(pronLabel, pronValue);
-        container.appendChild(pronDiv);
-      }
+      wordInfo.append(wordEl, phoneticEl);
 
+      const speakBtn = createElement("button", "captions-popup-speak-v2");
+      speakBtn.type = "button";
+      speakBtn.innerHTML = "🔊";
+      speakBtn.addEventListener("click", () => {
+        speakWord(parsed.word, config.dictionaryLang, parsed.audioUrl);
+      });
+
+      wordHeader.append(wordInfo, speakBtn);
+      container.appendChild(wordHeader);
+
+      // Definition section
       if (parsed.definitions.length) {
-        const defDiv = createElement("div", "captions-popup-section-v2");
+        const defSection = createElement("div", "captions-popup-section-v2");
         const defLabel = createElement("div", "captions-popup-label-v2");
-        defLabel.textContent = "Definition";
-        defDiv.appendChild(defLabel);
+        defLabel.textContent = "DEFINITION";
 
-        parsed.definitions.forEach((def, index) => {
-          const defValue = createElement("div", "captions-popup-value-v2");
-          defValue.textContent = `${index + 1}. ${def}`;
-          defDiv.appendChild(defValue);
-        });
+        const defValue = createElement("div", "captions-popup-definition-v2");
+        defValue.textContent = parsed.definitions[0]; // Show first definition
 
-        container.appendChild(defDiv);
+        defSection.append(defLabel, defValue);
+        container.appendChild(defSection);
+      }
+
+      // Translation section (placeholder for now - will need translation API)
+      const transSection = createElement("div", "captions-popup-section-v2");
+      const transLabel = createElement("div", "captions-popup-label-v2");
+      transLabel.textContent = "TRANSLATION";
+
+      const transValue = createElement("div", "captions-popup-value-v2");
+      transValue.textContent = "(Translation coming soon)";
+
+      transSection.append(transLabel, transValue);
+      container.appendChild(transSection);
+
+      // Context section
+      const contextSection = createElement("div", "captions-popup-section-v2");
+      const contextLabel = createElement("div", "captions-popup-label-v2");
+      contextLabel.textContent = "CONTEXT";
+
+      const contextBadge = createElement("span", "captions-popup-context-badge-v2");
+      contextBadge.textContent = "Video Sync";
+
+      contextSection.append(contextLabel, contextBadge);
+      container.appendChild(contextSection);
+
+      // Example section
+      if (parsed.examples && parsed.examples.length > 0) {
+        const exampleSection = createElement("div", "captions-popup-section-v2");
+        const exampleLabel = createElement("div", "captions-popup-label-v2");
+        exampleLabel.textContent = "EXAMPLE";
+
+        const exampleValue = createElement("div", "captions-popup-example-v2");
+        exampleValue.textContent = `"${parsed.examples[0]}"`;
+
+        exampleSection.append(exampleLabel, exampleValue);
+        container.appendChild(exampleSection);
       }
 
       if (!parsed.definitions.length) {
