@@ -18,6 +18,12 @@
     historySize: 12,
     customPosition: null, // { top, left } for custom drag position
     popupMode: "compact", // "compact" or "fullscreen"
+    // Caption-specific settings
+    captionOpacity: 0.85,
+    captionFontSize: 24,
+    captionFontFamily: "inherit",
+    captionColor: "#ffffff",
+    captionWidth: 80, // percentage
   };
 
   const config = { ...defaultConfig };
@@ -695,7 +701,7 @@
       // Split each line into words and whitespace
       const parts = line.split(/(\s+)/);
 
-      parts.forEach((part) => {
+      parts.forEach((part, partIndex) => {
         if (!part) return;
 
         if (/^\s+$/.test(part)) {
@@ -706,6 +712,13 @@
           const word = createElement("span", "captions-word-v2");
           word.textContent = part;
           overlay.appendChild(word);
+
+          // Safety: Add space after word if next part isn't whitespace
+          // This ensures words never run together even if YouTube's caption text is malformed
+          const nextPart = parts[partIndex + 1];
+          if (nextPart !== undefined && !/^\s+$/.test(nextPart)) {
+            overlay.appendChild(document.createTextNode(' '));
+          }
         }
       });
 
@@ -956,7 +969,12 @@
     dragHandle.innerHTML = "⋮⋮";
     dragHandle.title = "Drag to reposition";
 
-    floatingOverlay.append(dragHandle, overlay);
+    const captionSettingsIcon = createElement("button", "captions-caption-settings-icon-v2");
+    captionSettingsIcon.type = "button";
+    captionSettingsIcon.appendChild(createSVGIcon("settings", 16));
+    captionSettingsIcon.title = "Caption Settings";
+
+    floatingOverlay.append(dragHandle, overlay, captionSettingsIcon);
 
     // Word Definition Popup
     const popup = createElement("div", "captions-popup-v2");
@@ -988,6 +1006,121 @@
 
     popupContainer.append(popupHeader, popupContent, popupArrow);
     popup.append(popupBackdrop, popupContainer);
+
+    // Caption Settings Panel (for caption-specific controls)
+    const captionSettingsPanel = createElement("div", "captions-caption-settings-panel-v2");
+    captionSettingsPanel.id = "captions-caption-settings-panel-v2";
+
+    const captionSettingsHeader = createElement("div", "captions-settings-header-v2");
+    captionSettingsHeader.textContent = "Caption Appearance";
+
+    const captionSettingsClose = createElement("button", "captions-settings-close-v2");
+    captionSettingsClose.type = "button";
+    captionSettingsClose.innerHTML = "×";
+    captionSettingsClose.title = "Close";
+
+    const captionSettingsContent = createElement("div", "captions-settings-content-v2");
+
+    // Opacity Control
+    const capOpacityGroup = createElement("div", "captions-settings-group-v2");
+    const capOpacityLabel = createElement("label", "captions-settings-label-v2");
+    capOpacityLabel.textContent = "Opacity";
+    const capOpacityControl = createElement("div", "captions-settings-control-v2");
+    const capOpacitySlider = createElement("input", "captions-settings-slider-v2");
+    capOpacitySlider.type = "range";
+    capOpacitySlider.min = "0.3";
+    capOpacitySlider.max = "1";
+    capOpacitySlider.step = "0.05";
+    capOpacitySlider.value = config.captionOpacity.toString();
+    capOpacitySlider.id = "caption-opacity-slider";
+    const capOpacityValue = createElement("span", "captions-settings-value-v2");
+    capOpacityValue.textContent = `${Math.round(config.captionOpacity * 100)}%`;
+    capOpacityControl.append(capOpacitySlider, capOpacityValue);
+    capOpacityGroup.append(capOpacityLabel, capOpacityControl);
+
+    // Font Size Control
+    const capFontSizeGroup = createElement("div", "captions-settings-group-v2");
+    const capFontSizeLabel = createElement("label", "captions-settings-label-v2");
+    capFontSizeLabel.textContent = "Font Size";
+    const capFontSizeControl = createElement("div", "captions-settings-control-v2");
+    const capFontSizeSlider = createElement("input", "captions-settings-slider-v2");
+    capFontSizeSlider.type = "range";
+    capFontSizeSlider.min = "14";
+    capFontSizeSlider.max = "48";
+    capFontSizeSlider.value = config.captionFontSize.toString();
+    capFontSizeSlider.id = "caption-font-size-slider";
+    const capFontSizeValue = createElement("span", "captions-settings-value-v2");
+    capFontSizeValue.textContent = `${config.captionFontSize}px`;
+    capFontSizeControl.append(capFontSizeSlider, capFontSizeValue);
+    capFontSizeGroup.append(capFontSizeLabel, capFontSizeControl);
+
+    // Font Family Control
+    const capFontFamilyGroup = createElement("div", "captions-settings-group-v2");
+    const capFontFamilyLabel = createElement("label", "captions-settings-label-v2");
+    capFontFamilyLabel.textContent = "Font Family";
+    const capFontFamilyControl = createElement("div", "captions-settings-control-v2");
+    const capFontFamilySelect = createElement("select", "captions-settings-select-v2");
+    capFontFamilySelect.id = "caption-font-family-select";
+
+    const fonts = [
+      { value: "inherit", name: "Default (YouTube)" },
+      { value: "Arial, sans-serif", name: "Arial" },
+      { value: "'Roboto', sans-serif", name: "Roboto" },
+      { value: "'Helvetica Neue', sans-serif", name: "Helvetica" },
+      { value: "'Courier New', monospace", name: "Courier" },
+      { value: "'Georgia', serif", name: "Georgia" },
+      { value: "'Times New Roman', serif", name: "Times" },
+      { value: "'Comic Sans MS', cursive", name: "Comic Sans" },
+    ];
+
+    fonts.forEach(font => {
+      const option = createElement("option");
+      option.value = font.value;
+      option.textContent = font.name;
+      if (font.value === config.captionFontFamily) {
+        option.selected = true;
+      }
+      capFontFamilySelect.appendChild(option);
+    });
+
+    capFontFamilyControl.appendChild(capFontFamilySelect);
+    capFontFamilyGroup.append(capFontFamilyLabel, capFontFamilyControl);
+
+    // Text Color Control
+    const capColorGroup = createElement("div", "captions-settings-group-v2");
+    const capColorLabel = createElement("label", "captions-settings-label-v2");
+    capColorLabel.textContent = "Text Color";
+    const capColorControl = createElement("div", "captions-settings-control-v2");
+    const capColorInput = createElement("input");
+    capColorInput.type = "color";
+    capColorInput.value = config.captionColor;
+    capColorInput.id = "caption-color-input";
+    capColorInput.style.width = "100%";
+    capColorInput.style.height = "36px";
+    capColorInput.style.border = "1px solid var(--v2-border)";
+    capColorInput.style.borderRadius = "6px";
+    capColorInput.style.cursor = "pointer";
+    capColorControl.appendChild(capColorInput);
+    capColorGroup.append(capColorLabel, capColorControl);
+
+    // Width Control
+    const capWidthGroup = createElement("div", "captions-settings-group-v2");
+    const capWidthLabel = createElement("label", "captions-settings-label-v2");
+    capWidthLabel.textContent = "Width";
+    const capWidthControl = createElement("div", "captions-settings-control-v2");
+    const capWidthSlider = createElement("input", "captions-settings-slider-v2");
+    capWidthSlider.type = "range";
+    capWidthSlider.min = "40";
+    capWidthSlider.max = "100";
+    capWidthSlider.value = config.captionWidth.toString();
+    capWidthSlider.id = "caption-width-slider";
+    const capWidthValue = createElement("span", "captions-settings-value-v2");
+    capWidthValue.textContent = `${config.captionWidth}%`;
+    capWidthControl.append(capWidthSlider, capWidthValue);
+    capWidthGroup.append(capWidthLabel, capWidthControl);
+
+    captionSettingsContent.append(capOpacityGroup, capFontSizeGroup, capFontFamilyGroup, capColorGroup, capWidthGroup);
+    captionSettingsPanel.append(captionSettingsHeader, captionSettingsClose, captionSettingsContent);
 
     // Settings Panel
     const settingsPanel = createElement("div", "captions-settings-panel-v2");
@@ -1068,7 +1201,7 @@
     settingsPanel.append(settingsHeader, settingsClose, settingsContent);
 
     // Assemble
-    root.append(sidebar, floatingOverlay, popup, settingsPanel);
+    root.append(sidebar, floatingOverlay, popup, captionSettingsPanel, settingsPanel);
     document.body.appendChild(root);
 
     // Event Handlers
@@ -1264,6 +1397,64 @@ STATS:
     langSelect.addEventListener("change", (e) => {
       config.dictionaryLang = e.target.value;
       flashStatus(`Dictionary language: ${e.target.options[e.target.selectedIndex].text}`);
+      saveConfig();
+    });
+
+    // Caption Settings Icon
+    captionSettingsIcon.addEventListener("click", (e) => {
+      e.stopPropagation();
+      captionSettingsPanel.classList.toggle("is-visible");
+    });
+
+    // Caption Settings Close
+    captionSettingsClose.addEventListener("click", () => {
+      captionSettingsPanel.classList.remove("is-visible");
+    });
+
+    // Caption Opacity Slider
+    capOpacitySlider.addEventListener("input", (e) => {
+      const value = parseFloat(e.target.value);
+      config.captionOpacity = value;
+      capOpacityValue.textContent = `${Math.round(value * 100)}%`;
+      floatingOverlay.style.background = `rgba(0, 0, 0, ${value})`;
+      saveConfig();
+    });
+
+    // Caption Font Size Slider
+    capFontSizeSlider.addEventListener("input", (e) => {
+      const value = parseInt(e.target.value, 10);
+      config.captionFontSize = value;
+      capFontSizeValue.textContent = `${value}px`;
+      overlay.style.fontSize = `${value}px`;
+      saveConfig();
+    });
+
+    // Caption Font Family Select
+    capFontFamilySelect.addEventListener("change", (e) => {
+      config.captionFontFamily = e.target.value;
+      overlay.style.fontFamily = e.target.value;
+      saveConfig();
+    });
+
+    // Caption Color Input
+    capColorInput.addEventListener("input", (e) => {
+      config.captionColor = e.target.value;
+      overlay.style.color = e.target.value;
+      saveConfig();
+    });
+
+    // Caption Width Slider
+    capWidthSlider.addEventListener("input", (e) => {
+      const value = parseInt(e.target.value, 10);
+      config.captionWidth = value;
+      capWidthValue.textContent = `${value}%`;
+
+      // Update overlay width
+      const rect = getPlayerRect();
+      if (rect) {
+        const overlayWidth = rect.width * (value / 100);
+        floatingOverlay.style.width = `${overlayWidth}px`;
+      }
       saveConfig();
     });
 
@@ -1480,7 +1671,10 @@ STATS:
     });
 
     // Initialize styles from config
-    overlay.style.fontSize = `${config.fontSize}px`;
+    overlay.style.fontSize = `${config.captionFontSize}px`;
+    overlay.style.fontFamily = config.captionFontFamily;
+    overlay.style.color = config.captionColor;
+    floatingOverlay.style.background = `rgba(0, 0, 0, ${config.captionOpacity})`;
 
     // Apply saved collapse state
     if (config.sidebarCollapsed) {

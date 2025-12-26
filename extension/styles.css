@@ -138,6 +138,51 @@
   cursor: grabbing;
 }
 
+/* Caption Settings Icon - In the caption overlay */
+.captions-caption-settings-icon-v2 {
+  position: absolute;
+  top: 8px;
+  right: 12px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: rgba(255, 255, 255, 0.6);
+  cursor: pointer;
+  padding: 6px;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+  pointer-events: auto;
+}
+
+.captions-caption-settings-icon-v2:hover {
+  background: rgba(255, 255, 255, 0.15);
+  border-color: rgba(255, 255, 255, 0.2);
+  color: rgba(255, 255, 255, 0.9);
+}
+
+/* Caption Settings Panel - Positioned near caption overlay */
+.captions-caption-settings-panel-v2 {
+  position: fixed;
+  bottom: 25%;
+  left: 50%;
+  transform: translateX(-50%) translateY(120%);
+  width: min(360px, 45vw);
+  background: rgba(20, 20, 20, 0.95);
+  backdrop-filter: blur(20px) saturate(180%);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 16px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
+  overflow: hidden;
+  transition: transform 0.3s ease;
+  z-index: 2147483646;
+}
+
+.captions-caption-settings-panel-v2.is-visible {
+  transform: translateX(-50%) translateY(0);
+}
+
 /* Sidebar Content */
 .captions-sidebar-content-v2 {
   flex: 1;
