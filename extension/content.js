@@ -9,24 +9,60 @@
   const CONTROL_SEEK_SECONDS = 5;
 
   const defaultConfig = {
-    align: "left",
-    fontSize: 24,
-    opacity: 0.95,
-    blur: 8,
-    dictionaryLang: "en",
-    historyEnabled: true,
-    historySize: 12,
-    customPosition: null, // { top, left } for custom drag position
-    popupMode: "compact", // "compact" or "fullscreen"
-    // Caption-specific settings
+    // Mode
+    mode: "learning", // "learning" or "translation"
+
+    // Caption Location
+    captionLocation: "overlay-draggable", // "sidebar", "overlay-fixed", "overlay-draggable"
+
+    // Word Detail Density
+    showPhonetics: true,
+    showPartOfSpeech: true,
+    showDefinitions: true,
+    showExamples: true,
+    showAudioPronunciation: true,
+    showVideoContext: true,
+
+    // Caption Appearance
     captionOpacity: 0.85,
     captionFontSize: 24,
     captionFontFamily: "inherit",
     captionColor: "#ffffff",
     captionWidth: 80, // percentage
+
+    // Language Settings
+    dictionaryLang: "en", // For learning mode
+    sourceLang: "en",     // For translation mode
+    targetLang: "es",     // For translation mode
+
+    // Other Settings
+    historyEnabled: true,
+    autoPauseOnClick: true,
+    customPosition: null, // { top, left } for custom drag position
+    sidebarCollapsed: false,
   };
 
   const config = { ...defaultConfig };
+
+  // Load config from storage
+  function loadConfig() {
+    if (typeof chrome !== "undefined" && chrome.storage) {
+      chrome.storage.local.get("captionsConfig", (result) => {
+        if (result.captionsConfig) {
+          Object.assign(config, result.captionsConfig);
+        }
+      });
+    }
+  }
+
+  // Save config to storage
+  function saveConfig() {
+    if (typeof chrome !== "undefined" && chrome.storage) {
+      chrome.storage.local.set({ captionsConfig: config });
+    }
+  }
+
+  loadConfig();
 
   if (document.getElementById(ROOT_ID)) {
     return;
@@ -96,9 +132,35 @@
     } else if (type === "chevron-down") {
       // lucide: chevron-down
       svg.innerHTML = `<path d="m6 9 6 6 6-6"/>`;
+    } else if (type === "chevron-left") {
+      // lucide: chevron-left
+      svg.innerHTML = `<path d="m15 18-6-6 6-6"/>`;
+    } else if (type === "chevron-right") {
+      // lucide: chevron-right
+      svg.innerHTML = `<path d="m9 18 6-6-6-6"/>`;
     } else if (type === "check") {
       // lucide: check
       svg.innerHTML = `<path d="M20 6 9 17l-5-5"/>`;
+    } else if (type === "search") {
+      // lucide: search
+      svg.innerHTML = `
+        <circle cx="11" cy="11" r="8"/>
+        <path d="m21 21-4.3-4.3"/>
+      `;
+    } else if (type === "git-compare") {
+      // lucide: git-compare (for diff)
+      svg.innerHTML = `
+        <circle cx="18" cy="18" r="3"/>
+        <circle cx="6" cy="6" r="3"/>
+        <path d="M13 6h3a2 2 0 0 1 2 2v7"/>
+        <path d="M11 18H8a2 2 0 0 1-2-2V9"/>
+      `;
+    } else if (type === "panel-right") {
+      // lucide: panel-right (for sidebar toggle)
+      svg.innerHTML = `
+        <rect width="18" height="18" x="3" y="3" rx="2" ry="2"/>
+        <line x1="15" x2="15" y1="3" y2="21"/>
+      `;
     }
 
     return svg;
@@ -886,7 +948,14 @@
     const root = createElement("div");
     root.id = ROOT_ID;
 
-    // Sidebar Container (replaces floating overlay)
+    // Floating Toggle Button (top-left corner with "C" badge)
+    const floatingToggle = createElement("button", "captions-floating-toggle-v2");
+    floatingToggle.type = "button";
+    floatingToggle.id = "captions-floating-toggle-v2";
+    floatingToggle.textContent = "C";
+    floatingToggle.title = "Toggle Captions Sidebar";
+
+    // Sidebar Container
     const sidebar = createElement("div", "captions-sidebar-v2");
     sidebar.id = "captions-sidebar-v2";
 
@@ -933,16 +1002,14 @@
     // Debug: copy ALL words ever seen
     const debugCopyButton = createElement("button", "captions-history-copy-v2");
     debugCopyButton.type = "button";
-    debugCopyButton.textContent = "🔍";
+    debugCopyButton.appendChild(createSVGIcon("search", 16));
     debugCopyButton.title = "Copy ALL words (debug)";
-    debugCopyButton.style.fontSize = "14px";
 
     // Diff: compare transcript vs all words
     const diffButton = createElement("button", "captions-history-copy-v2");
     diffButton.type = "button";
-    diffButton.textContent = "⚖️";
+    diffButton.appendChild(createSVGIcon("git-compare", 16));
     diffButton.title = "Compare transcript vs all words";
-    diffButton.style.fontSize = "14px";
 
     historyHeader.append(historyTitle, historyCopyButton, debugCopyButton, diffButton);
 
@@ -1007,19 +1074,218 @@
     popupContainer.append(popupHeader, popupContent, popupArrow);
     popup.append(popupBackdrop, popupContainer);
 
-    // Caption Settings Panel (for caption-specific controls)
-    const captionSettingsPanel = createElement("div", "captions-caption-settings-panel-v2");
-    captionSettingsPanel.id = "captions-caption-settings-panel-v2";
+    // Unified Learning Settings Panel
+    const settingsPanel = createElement("div", "captions-unified-settings-panel-v2");
+    settingsPanel.id = "captions-unified-settings-panel-v2";
 
-    const captionSettingsHeader = createElement("div", "captions-settings-header-v2");
-    captionSettingsHeader.textContent = "Caption Appearance";
+    const settingsHeader = createElement("div", "captions-unified-settings-header-v2");
+    const settingsHeaderTitle = createElement("div", "captions-unified-settings-title-v2");
+    settingsHeaderTitle.textContent = "Learning Settings";
+    const settingsHeaderSubtitle = createElement("div", "captions-unified-settings-subtitle-v2");
+    settingsHeaderSubtitle.textContent = "CUSTOMIZE YOUR EXPERIENCE";
+    settingsHeader.append(settingsHeaderTitle, settingsHeaderSubtitle);
 
-    const captionSettingsClose = createElement("button", "captions-settings-close-v2");
-    captionSettingsClose.type = "button";
-    captionSettingsClose.innerHTML = "×";
-    captionSettingsClose.title = "Close";
+    const settingsClose = createElement("button", "captions-settings-close-v2");
+    settingsClose.type = "button";
+    settingsClose.innerHTML = "×";
+    settingsClose.title = "Close Settings";
 
-    const captionSettingsContent = createElement("div", "captions-settings-content-v2");
+    const settingsContent = createElement("div", "captions-unified-settings-content-v2");
+
+    // === MODE SECTION ===
+    const modeSection = createElement("div", "captions-settings-section-v2");
+    const modeSectionLabel = createElement("div", "captions-settings-section-label-v2");
+    modeSectionLabel.textContent = "MODE";
+    const modePillGroup = createElement("div", "captions-pill-group-v2");
+
+    const learningPill = createElement("button", "captions-pill-v2");
+    learningPill.type = "button";
+    learningPill.textContent = "Learning";
+    learningPill.dataset.value = "learning";
+    if (config.mode === "learning") learningPill.classList.add("is-active");
+
+    const translationPill = createElement("button", "captions-pill-v2");
+    translationPill.type = "button";
+    translationPill.textContent = "Translation";
+    translationPill.dataset.value = "translation";
+    if (config.mode === "translation") translationPill.classList.add("is-active");
+
+    modePillGroup.append(learningPill, translationPill);
+    modeSection.append(modeSectionLabel, modePillGroup);
+
+    // === LANGUAGE SETTINGS SECTION (mode-dependent) ===
+    const languageSection = createElement("div", "captions-settings-section-v2");
+    languageSection.id = "language-section";
+    const languageSectionLabel = createElement("div", "captions-settings-section-label-v2");
+    languageSectionLabel.textContent = "LANGUAGE";
+
+    // Learning Mode: Dictionary Language
+    const learningLangGroup = createElement("div", "captions-settings-group-v2");
+    learningLangGroup.id = "learning-lang-group";
+    const learningLangLabel = createElement("label", "captions-settings-label-v2");
+    learningLangLabel.textContent = "Dictionary Language";
+    const learningLangControl = createElement("div", "captions-settings-control-v2");
+    const learningLangSelect = createElement("select", "captions-settings-select-v2");
+    learningLangSelect.id = "learning-lang-select";
+
+    // Translation Mode: Source and Target Languages
+    const translationLangGroup = createElement("div", "captions-settings-group-v2");
+    translationLangGroup.id = "translation-lang-group";
+    translationLangGroup.style.display = "none";
+
+    const sourceLangLabel = createElement("label", "captions-settings-label-v2");
+    sourceLangLabel.textContent = "Source Language";
+    const sourceLangControl = createElement("div", "captions-settings-control-v2");
+    const sourceLangSelect = createElement("select", "captions-settings-select-v2");
+    sourceLangSelect.id = "source-lang-select";
+
+    const targetLangLabel = createElement("label", "captions-settings-label-v2");
+    targetLangLabel.textContent = "Target Language";
+    targetLangLabel.style.marginTop = "12px";
+    const targetLangControl = createElement("div", "captions-settings-control-v2");
+    const targetLangSelect = createElement("select", "captions-settings-select-v2");
+    targetLangSelect.id = "target-lang-select";
+
+    const languages = [
+      { code: "en", name: "English" },
+      { code: "es", name: "Spanish" },
+      { code: "fr", name: "French" },
+      { code: "de", name: "German" },
+      { code: "it", name: "Italian" },
+      { code: "pt", name: "Portuguese" },
+      { code: "ru", name: "Russian" },
+      { code: "ja", name: "Japanese" },
+      { code: "ko", name: "Korean" },
+      { code: "zh", name: "Chinese" },
+      { code: "ar", name: "Arabic" },
+      { code: "hi", name: "Hindi" },
+      { code: "nl", name: "Dutch" },
+      { code: "sv", name: "Swedish" },
+      { code: "no", name: "Norwegian" },
+      { code: "da", name: "Danish" },
+      { code: "fi", name: "Finnish" },
+      { code: "pl", name: "Polish" },
+      { code: "tr", name: "Turkish" },
+      { code: "el", name: "Greek" },
+      { code: "he", name: "Hebrew" }
+    ];
+
+    // Populate language selectors
+    languages.forEach(lang => {
+      const learningOption = createElement("option");
+      learningOption.value = lang.code;
+      learningOption.textContent = lang.name;
+      if (lang.code === config.dictionaryLang) {
+        learningOption.selected = true;
+      }
+      learningLangSelect.appendChild(learningOption);
+
+      const sourceOption = createElement("option");
+      sourceOption.value = lang.code;
+      sourceOption.textContent = lang.name;
+      if (lang.code === config.sourceLang) {
+        sourceOption.selected = true;
+      }
+      sourceLangSelect.appendChild(sourceOption);
+
+      const targetOption = createElement("option");
+      targetOption.value = lang.code;
+      targetOption.textContent = lang.name;
+      if (lang.code === config.targetLang) {
+        targetOption.selected = true;
+      }
+      targetLangSelect.appendChild(targetOption);
+    });
+
+    learningLangControl.appendChild(learningLangSelect);
+    learningLangGroup.append(learningLangLabel, learningLangControl);
+
+    sourceLangControl.appendChild(sourceLangSelect);
+    targetLangControl.appendChild(targetLangSelect);
+    translationLangGroup.append(sourceLangLabel, sourceLangControl, targetLangLabel, targetLangControl);
+
+    languageSection.append(languageSectionLabel, learningLangGroup, translationLangGroup);
+
+    // Show/hide language controls based on mode
+    function updateLanguageControls() {
+      if (config.mode === "learning") {
+        learningLangGroup.style.display = "flex";
+        translationLangGroup.style.display = "none";
+      } else {
+        learningLangGroup.style.display = "none";
+        translationLangGroup.style.display = "flex";
+      }
+    }
+    updateLanguageControls();
+
+    // === CAPTION LOCATION SECTION ===
+    const locationSection = createElement("div", "captions-settings-section-v2");
+    const locationSectionLabel = createElement("div", "captions-settings-section-label-v2");
+    locationSectionLabel.textContent = "CAPTION LOCATION";
+    const locationPillGroup = createElement("div", "captions-pill-group-v2");
+
+    const sidebarPill = createElement("button", "captions-pill-v2");
+    sidebarPill.type = "button";
+    sidebarPill.textContent = "Sidebar";
+    sidebarPill.dataset.value = "sidebar";
+    if (config.captionLocation === "sidebar") sidebarPill.classList.add("is-active");
+
+    const fixedPill = createElement("button", "captions-pill-v2");
+    fixedPill.type = "button";
+    fixedPill.textContent = "Overlay Fixed";
+    fixedPill.dataset.value = "overlay-fixed";
+    if (config.captionLocation === "overlay-fixed") fixedPill.classList.add("is-active");
+
+    const draggablePill = createElement("button", "captions-pill-v2");
+    draggablePill.type = "button";
+    draggablePill.textContent = "Overlay Draggable";
+    draggablePill.dataset.value = "overlay-draggable";
+    if (config.captionLocation === "overlay-draggable") draggablePill.classList.add("is-active");
+
+    locationPillGroup.append(sidebarPill, fixedPill, draggablePill);
+    locationSection.append(locationSectionLabel, locationPillGroup);
+
+    // === WORD DETAIL DENSITY SECTION ===
+    const densitySection = createElement("div", "captions-settings-section-v2");
+    const densitySectionLabel = createElement("div", "captions-settings-section-label-v2");
+    densitySectionLabel.textContent = "WORD DETAIL DENSITY";
+
+    // Helper function to create toggle switch
+    function createToggle(label, id, checked) {
+      const toggleRow = createElement("div", "captions-toggle-row-v2");
+      const toggleLabel = createElement("label", "captions-toggle-label-v2");
+      toggleLabel.textContent = label;
+      toggleLabel.htmlFor = id;
+
+      const toggleSwitch = createElement("label", "captions-toggle-switch-v2");
+      const toggleInput = createElement("input");
+      toggleInput.type = "checkbox";
+      toggleInput.id = id;
+      toggleInput.checked = checked;
+      const toggleSlider = createElement("span", "captions-toggle-slider-v2");
+
+      toggleSwitch.append(toggleInput, toggleSlider);
+      toggleRow.append(toggleLabel, toggleSwitch);
+      return { row: toggleRow, input: toggleInput };
+    }
+
+    const phoneticsToggle = createToggle("Phonetics", "toggle-phonetics", config.showPhonetics);
+    const posToggle = createToggle("Part of Speech", "toggle-pos", config.showPartOfSpeech);
+    const definitionsToggle = createToggle("Definitions", "toggle-definitions", config.showDefinitions);
+    const examplesToggle = createToggle("Example Usage", "toggle-examples", config.showExamples);
+
+    densitySection.append(
+      densitySectionLabel,
+      phoneticsToggle.row,
+      posToggle.row,
+      definitionsToggle.row,
+      examplesToggle.row
+    );
+
+    // === CAPTION APPEARANCE SECTION ===
+    const appearanceSection = createElement("div", "captions-settings-section-v2");
+    const appearanceSectionLabel = createElement("div", "captions-settings-section-label-v2");
+    appearanceSectionLabel.textContent = "CAPTION APPEARANCE";
 
     // Opacity Control
     const capOpacityGroup = createElement("div", "captions-settings-group-v2");
@@ -1119,102 +1385,72 @@
     capWidthControl.append(capWidthSlider, capWidthValue);
     capWidthGroup.append(capWidthLabel, capWidthControl);
 
-    captionSettingsContent.append(capOpacityGroup, capFontSizeGroup, capFontFamilyGroup, capColorGroup, capWidthGroup);
-    captionSettingsPanel.append(captionSettingsHeader, captionSettingsClose, captionSettingsContent);
+    appearanceSection.append(
+      appearanceSectionLabel,
+      capOpacityGroup,
+      capFontSizeGroup,
+      capFontFamilyGroup,
+      capColorGroup,
+      capWidthGroup
+    );
 
-    // Settings Panel
-    const settingsPanel = createElement("div", "captions-settings-panel-v2");
-    settingsPanel.id = "captions-settings-panel-v2";
+    // Assemble all sections
+    settingsContent.append(
+      modeSection,
+      languageSection,
+      locationSection,
+      densitySection,
+      appearanceSection
+    );
 
-    const settingsHeader = createElement("div", "captions-settings-header-v2");
-    settingsHeader.textContent = "Display Settings";
-
-    const settingsClose = createElement("button", "captions-settings-close-v2");
-    settingsClose.type = "button";
-    settingsClose.innerHTML = "×";
-    settingsClose.title = "Close Settings";
-
-    const settingsContent = createElement("div", "captions-settings-content-v2");
-
-    // Font Size Control
-    const fontSizeGroup = createElement("div", "captions-settings-group-v2");
-    const fontSizeLabel = createElement("label", "captions-settings-label-v2");
-    fontSizeLabel.textContent = "Font Size";
-    const fontSizeControl = createElement("div", "captions-settings-control-v2");
-    const fontSizeSlider = createElement("input", "captions-settings-slider-v2");
-    fontSizeSlider.type = "range";
-    fontSizeSlider.min = "16";
-    fontSizeSlider.max = "48";
-    fontSizeSlider.value = config.fontSize.toString();
-    fontSizeSlider.id = "font-size-slider";
-    const fontSizeValue = createElement("span", "captions-settings-value-v2");
-    fontSizeValue.textContent = `${config.fontSize}px`;
-    fontSizeControl.append(fontSizeSlider, fontSizeValue);
-    fontSizeGroup.append(fontSizeLabel, fontSizeControl);
-
-    // Dictionary Language Control
-    const langGroup = createElement("div", "captions-settings-group-v2");
-    const langLabel = createElement("label", "captions-settings-label-v2");
-    langLabel.textContent = "Dictionary Language";
-    const langControl = createElement("div", "captions-settings-control-v2");
-    const langSelect = createElement("select", "captions-settings-select-v2");
-    langSelect.id = "lang-select";
-
-    const languages = [
-      { code: "en", name: "English" },
-      { code: "es", name: "Spanish" },
-      { code: "fr", name: "French" },
-      { code: "de", name: "German" },
-      { code: "it", name: "Italian" },
-      { code: "pt", name: "Portuguese" },
-      { code: "ru", name: "Russian" },
-      { code: "ja", name: "Japanese" },
-      { code: "ko", name: "Korean" },
-      { code: "zh", name: "Chinese" },
-      { code: "ar", name: "Arabic" },
-      { code: "hi", name: "Hindi" },
-      { code: "nl", name: "Dutch" },
-      { code: "sv", name: "Swedish" },
-      { code: "no", name: "Norwegian" },
-      { code: "da", name: "Danish" },
-      { code: "fi", name: "Finnish" },
-      { code: "pl", name: "Polish" },
-      { code: "tr", name: "Turkish" },
-      { code: "el", name: "Greek" },
-      { code: "he", name: "Hebrew" }
-    ];
-
-    languages.forEach(lang => {
-      const option = createElement("option");
-      option.value = lang.code;
-      option.textContent = lang.name;
-      if (lang.code === config.dictionaryLang) {
-        option.selected = true;
-      }
-      langSelect.appendChild(option);
-    });
-
-    langControl.appendChild(langSelect);
-    langGroup.append(langLabel, langControl);
-
-    settingsContent.append(fontSizeGroup, langGroup);
     settingsPanel.append(settingsHeader, settingsClose, settingsContent);
 
     // Assemble
-    root.append(sidebar, floatingOverlay, popup, captionSettingsPanel, settingsPanel);
+    root.append(floatingToggle, sidebar, floatingOverlay, popup, settingsPanel);
     document.body.appendChild(root);
 
     // Event Handlers
 
-    // Collapse/Shade toggle
-    collapseButton.addEventListener("click", () => {
-      sidebar.classList.toggle("is-collapsed");
-      const isCollapsed = sidebar.classList.contains("is-collapsed");
-      collapseButton.textContent = "";
-      collapseButton.appendChild(createSVGIcon(isCollapsed ? "chevron-up" : "chevron-down", 16));
-      config.sidebarCollapsed = isCollapsed;
+    // Helper function to toggle sidebar and trigger YouTube resize
+    function toggleSidebar() {
+      const willBeHidden = !sidebar.classList.contains("is-hidden");
+
+      // For expand (opening), trigger resize slightly before to pre-shift YouTube
+      if (willBeHidden === false) {
+        window.dispatchEvent(new Event('resize'));
+        // Small delay to let YouTube start adjusting before sidebar appears
+        setTimeout(() => {
+          sidebar.classList.toggle("is-hidden");
+        }, 20);
+      } else {
+        // For collapse (closing), toggle immediately
+        sidebar.classList.toggle("is-hidden");
+        window.dispatchEvent(new Event('resize'));
+      }
+
+      const isHidden = sidebar.classList.contains("is-hidden");
+
+      // Update collapse button icon (delayed for expand case)
+      setTimeout(() => {
+        collapseButton.textContent = "";
+        collapseButton.appendChild(createSVGIcon(isHidden ? "chevron-right" : "chevron-left", 16));
+      }, willBeHidden === false ? 20 : 0);
+
+      // Save state
+      config.sidebarCollapsed = isHidden;
       saveConfig();
-    });
+
+      // Final resize after fast transition completes (0.2s)
+      setTimeout(() => {
+        window.dispatchEvent(new Event('resize'));
+      }, 250);
+    }
+
+    // Floating toggle button - toggles entire sidebar visibility
+    floatingToggle.addEventListener("click", toggleSidebar);
+
+    // Collapse button - toggles entire sidebar visibility
+    collapseButton.addEventListener("click", toggleSidebar);
 
     // Drag functionality for floating overlay
     dragHandle.addEventListener("mousedown", (e) => {
@@ -1313,9 +1549,11 @@
         console.log(`[Debug] Copied all ${state.allWordsEverSeen.length} words`);
 
         // Visual feedback
-        debugCopyButton.textContent = "✓";
+        debugCopyButton.textContent = "";
+        debugCopyButton.appendChild(createSVGIcon("check", 16));
         setTimeout(() => {
-          debugCopyButton.textContent = "🔍";
+          debugCopyButton.textContent = "";
+          debugCopyButton.appendChild(createSVGIcon("search", 16));
         }, 1500);
       } catch (error) {
         flashStatus("Copy failed");
@@ -1364,9 +1602,11 @@ STATS:
         console.log("[Diff] Comparison report copied to clipboard");
 
         // Visual feedback
-        diffButton.textContent = "✓";
+        diffButton.textContent = "";
+        diffButton.appendChild(createSVGIcon("check", 16));
         setTimeout(() => {
-          diffButton.textContent = "⚖️";
+          diffButton.textContent = "";
+          diffButton.appendChild(createSVGIcon("git-compare", 16));
         }, 1500);
       } catch (error) {
         flashStatus("Copy failed");
@@ -1384,31 +1624,89 @@ STATS:
       settingsPanel.classList.remove("is-visible");
     });
 
-    // Font size slider
-    fontSizeSlider.addEventListener("input", (e) => {
-      const value = parseInt(e.target.value, 10);
-      config.fontSize = value;
-      fontSizeValue.textContent = `${value}px`;
-      overlay.style.fontSize = `${value}px`;
+    // === MODE PILL BUTTONS ===
+    function handleModePillClick(e) {
+      const value = e.currentTarget.dataset.value;
+      config.mode = value;
+
+      // Update active state
+      learningPill.classList.toggle("is-active", value === "learning");
+      translationPill.classList.toggle("is-active", value === "translation");
+
+      // Update language controls visibility
+      updateLanguageControls();
+
+      flashStatus(`Mode: ${value === "learning" ? "Learning" : "Translation"}`);
+      saveConfig();
+    }
+
+    learningPill.addEventListener("click", handleModePillClick);
+    translationPill.addEventListener("click", handleModePillClick);
+
+    // === CAPTION LOCATION PILL BUTTONS ===
+    function handleLocationPillClick(e) {
+      const value = e.currentTarget.dataset.value;
+      config.captionLocation = value;
+
+      // Update active state
+      sidebarPill.classList.toggle("is-active", value === "sidebar");
+      fixedPill.classList.toggle("is-active", value === "overlay-fixed");
+      draggablePill.classList.toggle("is-active", value === "overlay-draggable");
+
+      flashStatus(`Caption location: ${value}`);
+      saveConfig();
+
+      // TODO: Implement actual location switching logic
+    }
+
+    sidebarPill.addEventListener("click", handleLocationPillClick);
+    fixedPill.addEventListener("click", handleLocationPillClick);
+    draggablePill.addEventListener("click", handleLocationPillClick);
+
+    // === WORD DETAIL DENSITY TOGGLES ===
+    phoneticsToggle.input.addEventListener("change", (e) => {
+      config.showPhonetics = e.target.checked;
       saveConfig();
     });
 
-    // Language select
-    langSelect.addEventListener("change", (e) => {
+    posToggle.input.addEventListener("change", (e) => {
+      config.showPartOfSpeech = e.target.checked;
+      saveConfig();
+    });
+
+    definitionsToggle.input.addEventListener("change", (e) => {
+      config.showDefinitions = e.target.checked;
+      saveConfig();
+    });
+
+    examplesToggle.input.addEventListener("change", (e) => {
+      config.showExamples = e.target.checked;
+      saveConfig();
+    });
+
+    // === LANGUAGE SELECTORS ===
+    learningLangSelect.addEventListener("change", (e) => {
       config.dictionaryLang = e.target.value;
       flashStatus(`Dictionary language: ${e.target.options[e.target.selectedIndex].text}`);
       saveConfig();
     });
 
-    // Caption Settings Icon
-    captionSettingsIcon.addEventListener("click", (e) => {
-      e.stopPropagation();
-      captionSettingsPanel.classList.toggle("is-visible");
+    sourceLangSelect.addEventListener("change", (e) => {
+      config.sourceLang = e.target.value;
+      flashStatus(`Source language: ${e.target.options[e.target.selectedIndex].text}`);
+      saveConfig();
     });
 
-    // Caption Settings Close
-    captionSettingsClose.addEventListener("click", () => {
-      captionSettingsPanel.classList.remove("is-visible");
+    targetLangSelect.addEventListener("change", (e) => {
+      config.targetLang = e.target.value;
+      flashStatus(`Target language: ${e.target.options[e.target.selectedIndex].text}`);
+      saveConfig();
+    });
+
+    // Caption Settings Icon (opens unified panel now)
+    captionSettingsIcon.addEventListener("click", (e) => {
+      e.stopPropagation();
+      settingsPanel.classList.toggle("is-visible");
     });
 
     // Caption Opacity Slider
@@ -1676,11 +1974,11 @@ STATS:
     overlay.style.color = config.captionColor;
     floatingOverlay.style.background = `rgba(0, 0, 0, ${config.captionOpacity})`;
 
-    // Apply saved collapse state
+    // Apply saved sidebar visibility state
     if (config.sidebarCollapsed) {
-      sidebar.classList.add("is-collapsed");
+      sidebar.classList.add("is-hidden");
       collapseButton.textContent = "";
-      collapseButton.appendChild(createSVGIcon("chevron-up", 16));
+      collapseButton.appendChild(createSVGIcon("chevron-right", 16));
     }
 
     // Initialize
