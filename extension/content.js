@@ -1,11 +1,13 @@
 (function () {
-  const ROOT_ID = "captions-root-v2";
-  const OVERLAY_ID = "captions-overlay-v2";
+  const ROOT_ID = "captions-root";
+  const OVERLAY_ID = "captions-overlay";
   const CAPTION_POLL_MS = 500;
   const REPLAY_BACK_SECONDS = 1.6;
   const STATUS_FLASH_MS = 1600;
   const DICTIONARY_API_BASE = "https://api.dictionaryapi.dev/api/v2/entries";
+  const LINGVA_API_BASE = "https://lingva.lunar.icu/api/v1";
   const DICTIONARY_CACHE_TTL_MS = 60 * 60 * 1000;
+  const TRANSLATION_CACHE_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
   const CONTROL_SEEK_SECONDS = 5;
 
   const defaultConfig = {
@@ -24,11 +26,12 @@
     showVideoContext: true,
 
     // Caption Appearance
-    captionOpacity: 0.85,
+    captionOpacity: 0.60,
     captionFontSize: 24,
     captionFontFamily: "inherit",
     captionColor: "#ffffff",
-    captionWidth: 80, // percentage
+    captionBgColor: "#000000",
+    captionWidth: 70, // percentage
 
     // Language Settings
     dictionaryLang: "en", // For learning mode
@@ -38,8 +41,16 @@
     // Other Settings
     historyEnabled: true,
     autoPauseOnClick: true,
+    showNativeCaptions: false, // Show YouTube's native captions alongside ours
     customPosition: null, // { top, left } for custom drag position
+    popupPosition: null, // { top, left } for word popup position
     sidebarCollapsed: false,
+
+    // Theme
+    theme: "dark", // "dark" or "light"
+
+    // Dual Subtitles
+    dualSubtitles: false, // Show translation below original
   };
 
   const config = { ...defaultConfig };
@@ -62,7 +73,24 @@
     }
   }
 
+  // Update native YouTube captions visibility based on config
+  function updateNativeCaptionsVisibility() {
+    const container = document.querySelector(".ytp-caption-window-container");
+    if (container) {
+      if (config.showNativeCaptions) {
+        container.classList.remove("sidecap-native-hidden");
+      } else {
+        container.classList.add("sidecap-native-hidden");
+      }
+    }
+  }
+
   loadConfig();
+
+  // Apply native captions visibility on load
+  setTimeout(() => {
+    updateNativeCaptionsVisibility();
+  }, 500);
 
   if (document.getElementById(ROOT_ID)) {
     return;
@@ -83,15 +111,49 @@
     dragStartY: 0,
     dragStartTop: 0,
     dragStartLeft: 0,
+    // Popup dragging state
+    isPopupDragging: false,
+    popupDragStartX: 0,
+    popupDragStartY: 0,
+    popupDragStartTop: 0,
+    popupDragStartLeft: 0,
     // Track all words and flush in chunks
     allWordsEverSeen: [],     // All unique words in order seen
     lastFlushedIndex: 0,      // Words up to this index have been flushed to history
-    lastFlushTime: 0,         // When we last flushed
+    lastFlushTime: 0,         // Video time when we last flushed
     lastCapturedText: "",     // For deduplication
     currentVideoId: null,     // Track current video to detect navigation
+    maxTimeFlushed: 0,        // Highest video time we've ever flushed (for rewind detection)
   };
 
   const dictionaryCache = new Map();
+  const translationCache = new Map();
+
+  // Translation API
+  async function translateText(text, sourceLang, targetLang) {
+    if (!text || !text.trim()) return "";
+
+    const cacheKey = `${sourceLang}:${targetLang}:${text}`;
+    const cached = translationCache.get(cacheKey);
+    if (cached && Date.now() - cached.timestamp < TRANSLATION_CACHE_TTL_MS) {
+      return cached.translation;
+    }
+
+    try {
+      const url = `${LINGVA_API_BASE}/${sourceLang}/${targetLang}/${encodeURIComponent(text)}`;
+      const response = await fetch(url);
+      if (!response.ok) throw new Error(`Translation failed: ${response.status}`);
+
+      const data = await response.json();
+      const translation = data.translation || "";
+
+      translationCache.set(cacheKey, { translation, timestamp: Date.now() });
+      return translation;
+    } catch (error) {
+      console.warn("[Captions] Translation error:", error);
+      return "(translation unavailable)";
+    }
+  }
 
   function createElement(tag, className) {
     const el = document.createElement(tag);
@@ -161,6 +223,39 @@
         <rect width="18" height="18" x="3" y="3" rx="2" ry="2"/>
         <line x1="15" x2="15" y1="3" y2="21"/>
       `;
+    } else if (type === "target") {
+      // lucide: crosshair (for recenter)
+      svg.innerHTML = `
+        <circle cx="12" cy="12" r="10"/>
+        <line x1="22" x2="18" y1="12" y2="12"/>
+        <line x1="6" x2="2" y1="12" y2="12"/>
+        <line x1="12" x2="12" y1="6" y2="2"/>
+        <line x1="12" x2="12" y1="22" y2="18"/>
+      `;
+    } else if (type === "list") {
+      // lucide: align-left (for transcript history)
+      svg.innerHTML = `
+        <line x1="21" x2="3" y1="6" y2="6"/>
+        <line x1="15" x2="3" y1="12" y2="12"/>
+        <line x1="17" x2="3" y1="18" y2="18"/>
+      `;
+    } else if (type === "volume") {
+      // lucide: volume-2 (for speak/pronunciation)
+      svg.innerHTML = `
+        <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/>
+        <path d="M15.54 8.46a5 5 0 0 1 0 7.07"/>
+        <path d="M19.07 4.93a10 10 0 0 1 0 14.14"/>
+      `;
+    } else if (type === "languages") {
+      // lucide: languages (for translate)
+      svg.innerHTML = `
+        <path d="m5 8 6 6"/>
+        <path d="m4 14 6-6 2-3"/>
+        <path d="M2 5h12"/>
+        <path d="M7 2h1"/>
+        <path d="m22 22-5-10-5 10"/>
+        <path d="M14 18h6"/>
+      `;
     }
 
     return svg;
@@ -195,6 +290,14 @@
     state.lastFlushTime = 0;
     state.lastCapturedText = "";
     state.renderedCaptionText = "";
+    state.maxTimeFlushed = 0; // Reset max time for new video
+
+    // Clear the caption overlay DOM element
+    const overlay = document.getElementById(OVERLAY_ID);
+    if (overlay) {
+      overlay.textContent = "";
+      overlay.className = "captions-overlay is-empty-state";
+    }
 
     console.log("[Captions] 🔄 Cleared transcript state for new video");
     renderHistory();
@@ -316,8 +419,39 @@
   function getCaptionText() {
     const container = document.querySelector(".ytp-caption-window-container");
     if (container) {
-      // Use innerText to preserve YouTube's line breaks and spacing
-      return container.innerText;
+      // Extract text from all child elements and explicitly add spaces between them
+      // This prevents concatenation when YouTube has inline elements without spacing
+      const allTextNodes = [];
+
+      // Get all text-containing elements (segments, spans, etc.)
+      const walker = document.createTreeWalker(
+        container,
+        NodeFilter.SHOW_TEXT,
+        null,
+        false
+      );
+
+      let node;
+      while (node = walker.nextNode()) {
+        const text = node.textContent.trim();
+        if (text) {
+          allTextNodes.push(text);
+        }
+      }
+
+      const fullText = allTextNodes.join(' ');
+
+      // IMPORTANT: Limit to last ~2 lines worth of text (approx 150 chars)
+      // This prevents old captions from accumulating in the overlay
+      const MAX_CAPTION_CHARS = 150;
+      if (fullText.length > MAX_CAPTION_CHARS) {
+        // Try to break at word boundary for cleaner display
+        const trimmed = fullText.slice(-MAX_CAPTION_CHARS);
+        const firstSpace = trimmed.indexOf(' ');
+        return firstSpace > 0 ? trimmed.slice(firstSpace + 1) : trimmed;
+      }
+
+      return fullText;
     }
     // Fallback: get individual segments and join with spaces
     const segments = Array.from(
@@ -326,11 +460,22 @@
     if (!segments.length) {
       return "";
     }
-    return segments
+
+    const fullText = segments
       .map((segment) => segment.textContent)
       .filter(Boolean)
       .join(" ") // Add space between segments!
       .trim();
+
+    // Limit to last ~2 lines worth of text
+    const MAX_CAPTION_CHARS = 150;
+    if (fullText.length > MAX_CAPTION_CHARS) {
+      const trimmed = fullText.slice(-MAX_CAPTION_CHARS);
+      const firstSpace = trimmed.indexOf(' ');
+      return firstSpace > 0 ? trimmed.slice(firstSpace + 1) : trimmed;
+    }
+
+    return fullText;
   }
 
   function getCaptionsButton() {
@@ -402,16 +547,16 @@
 
   // Utterance builder helper functions
   function normalizeText(text) {
-    // Remove YouTube UI noise patterns - aggressive cleanup
+    // Remove YouTube UI noise patterns - preserve spacing by replacing with space
     let cleaned = text
-      .replace(/\(auto-generated\)/gi, "")
-      .replace(/Click for settings/gi, "")
-      .replace(/Click for/gi, "")  // Remove standalone "Click for" (appears frequently)
-      .replace(/\bsettings\b/gi, "")
+      .replace(/\(auto-generated\)/gi, " ")
+      .replace(/Click for settings/gi, " ")
+      .replace(/Click for/gi, " ")  // Remove standalone "Click for" (appears frequently)
+      .replace(/\bsettings\b/gi, " ")
       // Remove standalone language names anywhere (common YouTube noise)
-      .replace(/\b(English|French|Spanish|German|Italian|Portuguese|Japanese|Korean|Chinese|Russian|Arabic|Hindi|Dutch|Swedish|Norwegian|Danish|Finnish|Polish|Turkish|Greek|Hebrew|Vietnamese|Thai|Indonesian|Malay)\b/gi, "");
+      .replace(/\b(English|French|Spanish|German|Italian|Portuguese|Japanese|Korean|Chinese|Russian|Arabic|Hindi|Dutch|Swedish|Norwegian|Danish|Finnish|Polish|Turkish|Greek|Hebrew|Vietnamese|Thai|Indonesian|Malay)\b/gi, " ");
 
-    // Normalize whitespace
+    // Normalize whitespace (collapse multiple spaces into one)
     return cleaned.replace(/\s+/g, " ").trim();
   }
 
@@ -556,6 +701,14 @@
     const normalized = normalizeText(text);
     if (!normalized) return;
 
+    // === REWIND DETECTION ===
+    // If we're rewinding (going backwards in time), don't add to history
+    // This prevents duplicates when user scrubs back in the timeline
+    if (videoTime < state.maxTimeFlushed - 1) { // 1 second tolerance for minor jitter
+      console.log(`[Captions] ⏪ Rewind detected (${videoTime.toFixed(1)}s < ${state.maxTimeFlushed.toFixed(1)}s) - skipping history`);
+      return;
+    }
+
     // === TUNABLE HEURISTICS ===
     // Minimum quality threshold - snippets must be this big to save
     const MIN_WORDS = 10;           // At least 10 words
@@ -564,13 +717,11 @@
 
     const wordCount = normalized.split(/\s+/).filter(Boolean).length;
     if (wordCount < MIN_WORDS || normalized.length < MIN_CHARS) {
-      console.log(`[Captions] ❌ Too short: ${wordCount}w ${normalized.length}c`);
       return;
     }
 
     // Simple deduplication - don't add if it's a substring of what we just added
     if (state.lastCapturedText && state.lastCapturedText.includes(normalized)) {
-      console.log(`[Captions] ❌ Duplicate (subset)`);
       return;
     }
 
@@ -578,7 +729,6 @@
     if (state.lastCapturedText && normalized.includes(state.lastCapturedText)) {
       // Replace the last entry with this longer version
       if (state.captionHistory.length > 0) {
-        console.log(`[Captions] 🔄 Replaced: ${wordCount}w ${normalized.length}c`);
         state.captionHistory[state.captionHistory.length - 1] = {
           id: Date.now(),
           text: normalized,
@@ -586,12 +736,11 @@
           timestamp: formatTimestamp(videoTime),
         };
         state.lastCapturedText = normalized;
+        state.maxTimeFlushed = Math.max(state.maxTimeFlushed, videoTime); // Update max time
         renderHistory();
         return;
       }
     }
-
-    console.log(`[Captions] ✅ CAPTURED: ${wordCount}w ${normalized.length}c - "${normalized.substring(0, 50)}..."`);
 
     const entry = {
       id: Date.now(),
@@ -606,14 +755,15 @@
     }
 
     state.lastCapturedText = normalized;
+    state.maxTimeFlushed = Math.max(state.maxTimeFlushed, videoTime); // Track highest time flushed
     renderHistory();
   }
 
   function shouldFlushBuffer(buffer) {
     // === TUNABLE HEURISTICS ===
     // These control when we flush the buffer (create history entry)
-    const TARGET_WORDS = 50;        // Flush at ~50 words (~25s of speech)
-    const TARGET_CHARS = 350;       // Or ~350 chars (roughly 4-5 lines)
+    const TARGET_WORDS = 25;        // Flush at ~25 words (~12s of speech)
+    const TARGET_CHARS = 175;       // Or ~175 chars (roughly 2-3 lines)
     // ==========================
 
     const wordCount = buffer.split(/\s+/).filter(Boolean).length;
@@ -657,7 +807,6 @@
     const newWords = words.slice(overlapCount);
     if (newWords.length > 0) {
       state.allWordsEverSeen.push(...newWords);
-      console.log(`[Debug] +${newWords.length}w (overlap: ${overlapCount}), total: ${state.allWordsEverSeen.length}`);
     }
   }
 
@@ -673,12 +822,10 @@
       const video = getVideo();
       const currentTime = video ? video.currentTime : 0;
 
-      captureToHistory(chunkText, state.lastFlushTime || currentTime);
+      captureToHistory(chunkText, currentTime);
 
       state.lastFlushedIndex += TARGET_WORDS;
       state.lastFlushTime = currentTime;
-
-      console.log(`[Captions] 📦 Flushed chunk: ${TARGET_WORDS}w, remaining: ${unflushedWords.length - TARGET_WORDS}w`);
     }
   }
 
@@ -715,7 +862,7 @@
   }
 
   function renderHistory() {
-    const historyList = document.getElementById("captions-history-list-v2");
+    const historyList = document.getElementById("captions-history-list");
     if (!historyList) {
       return;
     }
@@ -723,7 +870,7 @@
     historyList.textContent = "";
 
     if (!config.historyEnabled || !state.captionHistory.length) {
-      const empty = createElement("div", "captions-history-empty-v2");
+      const empty = createElement("div", "captions-history-empty");
       empty.textContent = config.historyEnabled
         ? "Sentences will appear here..."
         : "History disabled";
@@ -732,17 +879,66 @@
     }
 
     state.captionHistory.forEach((entry) => {
-      const item = createElement("button", "captions-history-item-v2");
-      item.type = "button";
+      const item = createElement("div", "captions-history-item");
       item.dataset.time = String(entry.time);
 
-      const time = createElement("span", "captions-history-time-v2");
+      const header = createElement("div", "captions-history-item-header");
+
+      const time = createElement("span", "captions-history-time");
       time.textContent = entry.timestamp;
 
-      const text = createElement("span", "captions-history-text-v2");
+      const text = createElement("span", "captions-history-text");
       text.textContent = entry.text;
 
-      item.append(time, text);
+      const translationRow = createElement("div", "captions-history-translation");
+
+      // Show existing translation if already fetched
+      if (entry.translation) {
+        translationRow.textContent = entry.translation;
+        translationRow.style.display = "block";
+      } else {
+        translationRow.style.display = "none";
+      }
+
+      // Only show translate button if enabled and not yet translated
+      if (config.dualSubtitles && !entry.translation) {
+        const translateBtn = createElement("button", "captions-history-translate-btn");
+        translateBtn.type = "button";
+        translateBtn.appendChild(createSVGIcon("languages", 14));
+        translateBtn.title = `Translate to ${config.targetLang.toUpperCase()}`;
+
+        // Translate button click
+        translateBtn.addEventListener("click", async (e) => {
+          e.stopPropagation();
+
+          translationRow.style.display = "block";
+          translationRow.textContent = "Translating...";
+
+          const translation = await translateText(entry.text, config.sourceLang, config.targetLang);
+          entry.translation = translation; // Store on entry
+          translationRow.textContent = translation;
+
+          // Remove the button after translation
+          translateBtn.remove();
+        });
+
+        header.append(time, translateBtn);
+      } else {
+        header.append(time);
+      }
+
+      // Click item to jump to time
+      item.addEventListener("click", (e) => {
+        if (e.target.closest(".captions-history-translate-btn")) return;
+        const video = getVideo();
+        if (video) {
+          video.currentTime = Math.max(0, entry.time - 0.5);
+          video.play().catch(() => {});
+          flashStatus(`Jumped to ${entry.timestamp}`);
+        }
+      });
+
+      item.append(header, text, translationRow);
       historyList.appendChild(item);
     });
 
@@ -771,7 +967,7 @@
           overlay.appendChild(document.createTextNode(part));
         } else {
           // Make words clickable
-          const word = createElement("span", "captions-word-v2");
+          const word = createElement("span", "captions-word");
           word.textContent = part;
           overlay.appendChild(word);
 
@@ -901,7 +1097,7 @@
   }
 
   function updateOverlayPosition() {
-    const overlay = document.getElementById("captions-floating-overlay-v2");
+    const overlay = document.getElementById("captions-floating-overlay");
     if (!overlay) {
       return;
     }
@@ -948,33 +1144,39 @@
     const root = createElement("div");
     root.id = ROOT_ID;
 
-    // Floating Toggle Button (top-left corner with "C" badge)
-    const floatingToggle = createElement("button", "captions-floating-toggle-v2");
+    // Floating Toggle Button (top-left corner with logo)
+    const floatingToggle = createElement("button", "captions-floating-toggle");
     floatingToggle.type = "button";
-    floatingToggle.id = "captions-floating-toggle-v2";
-    floatingToggle.textContent = "C";
-    floatingToggle.title = "Toggle Captions Sidebar";
+    floatingToggle.id = "captions-floating-toggle";
+    floatingToggle.title = "Toggle SideCap Sidebar";
+
+    // Add logo icon
+    const toggleIcon = document.createElement("img");
+    toggleIcon.src = chrome.runtime.getURL("icons/icon48.png");
+    toggleIcon.alt = "SideCap";
+    toggleIcon.style.cssText = "width: 32px; height: 32px; display: block;";
+    floatingToggle.appendChild(toggleIcon);
 
     // Sidebar Container
-    const sidebar = createElement("div", "captions-sidebar-v2");
-    sidebar.id = "captions-sidebar-v2";
+    const sidebar = createElement("div", "captions-sidebar");
+    sidebar.id = "captions-sidebar";
 
     // Title Bar with shade toggle
-    const titleBar = createElement("div", "captions-titlebar-v2");
+    const titleBar = createElement("div", "captions-titlebar");
 
-    const titleLeft = createElement("div", "captions-titlebar-left-v2");
-    const titleText = createElement("div", "captions-titlebar-text-v2");
-    titleText.textContent = "Captions";
+    const titleLeft = createElement("div", "captions-titlebar-left");
+    const titleText = createElement("div", "captions-titlebar-text");
+    titleText.textContent = "SideCap";
 
-    const collapseButton = createElement("button", "captions-collapse-button-v2");
+    const collapseButton = createElement("button", "captions-collapse-button");
     collapseButton.type = "button";
     collapseButton.appendChild(createSVGIcon("chevron-down", 16));
     collapseButton.title = "Collapse/Expand";
 
     titleLeft.append(titleText, collapseButton);
 
-    const titleRight = createElement("div", "captions-titlebar-right-v2");
-    const settingsIcon = createElement("button", "captions-settings-icon-v2");
+    const titleRight = createElement("div", "captions-titlebar-right");
+    const settingsIcon = createElement("button", "captions-settings-icon");
     settingsIcon.type = "button";
     settingsIcon.appendChild(createSVGIcon("settings", 18));
     settingsIcon.title = "Settings";
@@ -984,37 +1186,37 @@
     titleBar.append(titleLeft, titleRight);
 
     // Content area (collapsible)
-    const sidebarContent = createElement("div", "captions-sidebar-content-v2");
+    const sidebarContent = createElement("div", "captions-sidebar-content");
 
     // History Section (integrated into sidebar)
-    const historySection = createElement("div", "captions-history-section-v2");
+    const historySection = createElement("div", "captions-history-section");
 
-    const historyHeader = createElement("div", "captions-history-header-v2");
+    const historyHeader = createElement("div", "captions-history-header");
 
-    const historyTitle = createElement("span", "captions-history-title-v2");
+    const historyTitle = createElement("span", "captions-history-title");
     historyTitle.textContent = "History";
 
-    const historyCopyButton = createElement("button", "captions-history-copy-v2");
+    const historyCopyButton = createElement("button", "captions-history-copy");
     historyCopyButton.type = "button";
     historyCopyButton.appendChild(createSVGIcon("copy", 16));
     historyCopyButton.title = "Copy transcript to clipboard";
 
     // Debug: copy ALL words ever seen
-    const debugCopyButton = createElement("button", "captions-history-copy-v2");
+    const debugCopyButton = createElement("button", "captions-history-copy");
     debugCopyButton.type = "button";
     debugCopyButton.appendChild(createSVGIcon("search", 16));
     debugCopyButton.title = "Copy ALL words (debug)";
 
     // Diff: compare transcript vs all words
-    const diffButton = createElement("button", "captions-history-copy-v2");
+    const diffButton = createElement("button", "captions-history-copy");
     diffButton.type = "button";
     diffButton.appendChild(createSVGIcon("git-compare", 16));
     diffButton.title = "Compare transcript vs all words";
 
     historyHeader.append(historyTitle, historyCopyButton, debugCopyButton, diffButton);
 
-    const historyList = createElement("div", "captions-history-list-v2");
-    historyList.id = "captions-history-list-v2";
+    const historyList = createElement("div", "captions-history-list");
+    historyList.id = "captions-history-list";
 
     historySection.append(historyHeader, historyList);
 
@@ -1023,88 +1225,141 @@
     sidebar.append(titleBar, sidebarContent);
 
     // Floating Caption Overlay (default position - bottom of video)
-    const floatingOverlay = createElement("div", "captions-floating-overlay-v2");
-    floatingOverlay.id = "captions-floating-overlay-v2";
+    const floatingOverlay = createElement("div", "captions-floating-overlay");
+    floatingOverlay.id = "captions-floating-overlay";
 
-    const overlay = createElement("div", "captions-overlay-v2");
+    const overlay = createElement("div", "captions-overlay");
     overlay.id = OVERLAY_ID;
     overlay.setAttribute("aria-live", "polite");
     overlay.textContent = "";
 
-    const dragHandle = createElement("button", "captions-drag-handle-v2");
+    const dragHandle = createElement("button", "captions-drag-handle");
     dragHandle.type = "button";
     dragHandle.innerHTML = "⋮⋮";
     dragHandle.title = "Drag to reposition";
 
-    const captionSettingsIcon = createElement("button", "captions-caption-settings-icon-v2");
+    const recenterButton = createElement("button", "captions-recenter-button");
+    recenterButton.type = "button";
+    recenterButton.appendChild(createSVGIcon("target", 14));
+    recenterButton.title = "Recenter on video";
+
+    const historyButton = createElement("button", "captions-history-button");
+    historyButton.type = "button";
+    historyButton.appendChild(createSVGIcon("list", 14));
+    historyButton.title = "Show Transcript History";
+
+    const captionSettingsIcon = createElement("button", "captions-caption-settings-icon");
     captionSettingsIcon.type = "button";
     captionSettingsIcon.appendChild(createSVGIcon("settings", 16));
     captionSettingsIcon.title = "Caption Settings";
 
-    floatingOverlay.append(dragHandle, overlay, captionSettingsIcon);
+    floatingOverlay.append(dragHandle, recenterButton, historyButton, overlay, captionSettingsIcon);
 
     // Word Definition Popup
-    const popup = createElement("div", "captions-popup-v2");
-    popup.id = "captions-popup-v2";
+    const popup = createElement("div", "captions-popup");
+    popup.id = "captions-popup";
 
-    const popupBackdrop = createElement("div", "captions-popup-backdrop-v2");
-    const popupContainer = createElement("div", "captions-popup-container-v2");
+    const popupBackdrop = createElement("div", "captions-popup-backdrop");
+    const popupContainer = createElement("div", "captions-popup-container");
 
-    const popupHeader = createElement("div", "captions-popup-header-v2");
+    const popupHeader = createElement("div", "captions-popup-header");
 
     const popupHeaderLeft = createElement("div");
-    const popupTitle = createElement("div", "captions-popup-title-v2");
+    const popupTitle = createElement("div", "captions-popup-title");
     popupTitle.textContent = "Word Analysis";
     popupHeaderLeft.appendChild(popupTitle);
 
-    const popupClose = createElement("button", "captions-popup-close-v2");
+    const popupClose = createElement("button", "captions-popup-close");
     popupClose.type = "button";
     popupClose.innerHTML = "×";
 
     popupHeader.append(popupHeaderLeft, popupClose);
+    popupHeader.style.cursor = "grab";
 
-    const popupContent = createElement("div", "captions-popup-content-v2");
-    const popupLoading = createElement("div", "captions-popup-loading-v2");
+    const popupContent = createElement("div", "captions-popup-content");
+    const popupLoading = createElement("div", "captions-popup-loading");
     popupLoading.textContent = "Loading...";
     popupContent.appendChild(popupLoading);
 
-    // Arrow pointing down to the word
-    const popupArrow = createElement("div", "captions-popup-arrow-v2");
+    // Arrow pointing down to the word (hidden when dragged)
+    const popupArrow = createElement("div", "captions-popup-arrow");
 
     popupContainer.append(popupHeader, popupContent, popupArrow);
     popup.append(popupBackdrop, popupContainer);
 
+    // Popup drag functionality
+    popupHeader.addEventListener("mousedown", (e) => {
+      if (e.target === popupClose) return; // Don't drag when clicking close
+      e.preventDefault();
+      state.isPopupDragging = true;
+      state.popupDragStartX = e.clientX;
+      state.popupDragStartY = e.clientY;
+
+      const rect = popupContainer.getBoundingClientRect();
+      state.popupDragStartTop = rect.top;
+      state.popupDragStartLeft = rect.left;
+
+      popupHeader.style.cursor = "grabbing";
+      popupArrow.style.display = "none"; // Hide arrow when dragging
+    });
+
+    document.addEventListener("mousemove", (e) => {
+      if (!state.isPopupDragging) return;
+
+      const deltaX = e.clientX - state.popupDragStartX;
+      const deltaY = e.clientY - state.popupDragStartY;
+
+      const newTop = state.popupDragStartTop + deltaY;
+      const newLeft = state.popupDragStartLeft + deltaX;
+
+      popupContainer.style.top = `${newTop}px`;
+      popupContainer.style.left = `${newLeft}px`;
+    });
+
+    document.addEventListener("mouseup", () => {
+      if (state.isPopupDragging) {
+        state.isPopupDragging = false;
+        popupHeader.style.cursor = "grab";
+
+        // Save popup position
+        const rect = popupContainer.getBoundingClientRect();
+        config.popupPosition = {
+          top: rect.top,
+          left: rect.left
+        };
+        saveConfig();
+      }
+    });
+
     // Unified Learning Settings Panel
-    const settingsPanel = createElement("div", "captions-unified-settings-panel-v2");
-    settingsPanel.id = "captions-unified-settings-panel-v2";
+    const settingsPanel = createElement("div", "captions-unified-settings-panel");
+    settingsPanel.id = "captions-unified-settings-panel";
 
-    const settingsHeader = createElement("div", "captions-unified-settings-header-v2");
-    const settingsHeaderTitle = createElement("div", "captions-unified-settings-title-v2");
-    settingsHeaderTitle.textContent = "Learning Settings";
-    const settingsHeaderSubtitle = createElement("div", "captions-unified-settings-subtitle-v2");
-    settingsHeaderSubtitle.textContent = "CUSTOMIZE YOUR EXPERIENCE";
-    settingsHeader.append(settingsHeaderTitle, settingsHeaderSubtitle);
+    const settingsHeader = createElement("div", "captions-unified-settings-header");
+    const settingsHeaderTitle = createElement("div", "captions-unified-settings-title");
+    settingsHeaderTitle.textContent = "SideCap Settings";
+    settingsHeader.append(settingsHeaderTitle);
 
-    const settingsClose = createElement("button", "captions-settings-close-v2");
+    const settingsClose = createElement("button", "captions-settings-close");
     settingsClose.type = "button";
     settingsClose.innerHTML = "×";
     settingsClose.title = "Close Settings";
 
-    const settingsContent = createElement("div", "captions-unified-settings-content-v2");
+    const settingsContent = createElement("div", "captions-unified-settings-content");
 
     // === MODE SECTION ===
-    const modeSection = createElement("div", "captions-settings-section-v2");
-    const modeSectionLabel = createElement("div", "captions-settings-section-label-v2");
+    const modeSection = createElement("div", "captions-settings-section");
+    const modeSectionLabel = createElement("div", "captions-settings-section-label");
     modeSectionLabel.textContent = "MODE";
-    const modePillGroup = createElement("div", "captions-pill-group-v2");
+    const modePillGroup = createElement("div", "captions-pill-group");
 
-    const learningPill = createElement("button", "captions-pill-v2");
+    const learningPill = createElement("button", "captions-pill");
     learningPill.type = "button";
     learningPill.textContent = "Learning";
     learningPill.dataset.value = "learning";
     if (config.mode === "learning") learningPill.classList.add("is-active");
 
-    const translationPill = createElement("button", "captions-pill-v2");
+    const translationPill = createElement("button", "captions-pill");
     translationPill.type = "button";
     translationPill.textContent = "Translation";
     translationPill.dataset.value = "translation";
@@ -1114,36 +1369,36 @@
     modeSection.append(modeSectionLabel, modePillGroup);
 
     // === LANGUAGE SETTINGS SECTION (mode-dependent) ===
-    const languageSection = createElement("div", "captions-settings-section-v2");
+    const languageSection = createElement("div", "captions-settings-section");
     languageSection.id = "language-section";
-    const languageSectionLabel = createElement("div", "captions-settings-section-label-v2");
+    const languageSectionLabel = createElement("div", "captions-settings-section-label");
     languageSectionLabel.textContent = "LANGUAGE";
 
     // Learning Mode: Dictionary Language
-    const learningLangGroup = createElement("div", "captions-settings-group-v2");
+    const learningLangGroup = createElement("div", "captions-settings-group");
     learningLangGroup.id = "learning-lang-group";
-    const learningLangLabel = createElement("label", "captions-settings-label-v2");
+    const learningLangLabel = createElement("label", "captions-settings-label");
     learningLangLabel.textContent = "Dictionary Language";
-    const learningLangControl = createElement("div", "captions-settings-control-v2");
-    const learningLangSelect = createElement("select", "captions-settings-select-v2");
+    const learningLangControl = createElement("div", "captions-settings-control");
+    const learningLangSelect = createElement("select", "captions-settings-select");
     learningLangSelect.id = "learning-lang-select";
 
     // Translation Mode: Source and Target Languages
-    const translationLangGroup = createElement("div", "captions-settings-group-v2");
+    const translationLangGroup = createElement("div", "captions-settings-group");
     translationLangGroup.id = "translation-lang-group";
     translationLangGroup.style.display = "none";
 
-    const sourceLangLabel = createElement("label", "captions-settings-label-v2");
-    sourceLangLabel.textContent = "Source Language";
-    const sourceLangControl = createElement("div", "captions-settings-control-v2");
-    const sourceLangSelect = createElement("select", "captions-settings-select-v2");
+    const sourceLangLabel = createElement("label", "captions-settings-label");
+    sourceLangLabel.textContent = "Captions In";
+    const sourceLangControl = createElement("div", "captions-settings-control");
+    const sourceLangSelect = createElement("select", "captions-settings-select");
     sourceLangSelect.id = "source-lang-select";
 
-    const targetLangLabel = createElement("label", "captions-settings-label-v2");
-    targetLangLabel.textContent = "Target Language";
+    const targetLangLabel = createElement("label", "captions-settings-label");
+    targetLangLabel.textContent = "Translate To";
     targetLangLabel.style.marginTop = "12px";
-    const targetLangControl = createElement("div", "captions-settings-control-v2");
-    const targetLangSelect = createElement("select", "captions-settings-select-v2");
+    const targetLangControl = createElement("div", "captions-settings-control");
+    const targetLangSelect = createElement("select", "captions-settings-select");
     targetLangSelect.id = "target-lang-select";
 
     const languages = [
@@ -1219,24 +1474,24 @@
     updateLanguageControls();
 
     // === CAPTION LOCATION SECTION ===
-    const locationSection = createElement("div", "captions-settings-section-v2");
-    const locationSectionLabel = createElement("div", "captions-settings-section-label-v2");
+    const locationSection = createElement("div", "captions-settings-section");
+    const locationSectionLabel = createElement("div", "captions-settings-section-label");
     locationSectionLabel.textContent = "CAPTION LOCATION";
-    const locationPillGroup = createElement("div", "captions-pill-group-v2");
+    const locationPillGroup = createElement("div", "captions-pill-group");
 
-    const sidebarPill = createElement("button", "captions-pill-v2");
+    const sidebarPill = createElement("button", "captions-pill");
     sidebarPill.type = "button";
     sidebarPill.textContent = "Sidebar";
     sidebarPill.dataset.value = "sidebar";
     if (config.captionLocation === "sidebar") sidebarPill.classList.add("is-active");
 
-    const fixedPill = createElement("button", "captions-pill-v2");
+    const fixedPill = createElement("button", "captions-pill");
     fixedPill.type = "button";
     fixedPill.textContent = "Overlay Fixed";
     fixedPill.dataset.value = "overlay-fixed";
     if (config.captionLocation === "overlay-fixed") fixedPill.classList.add("is-active");
 
-    const draggablePill = createElement("button", "captions-pill-v2");
+    const draggablePill = createElement("button", "captions-pill");
     draggablePill.type = "button";
     draggablePill.textContent = "Overlay Draggable";
     draggablePill.dataset.value = "overlay-draggable";
@@ -1246,23 +1501,23 @@
     locationSection.append(locationSectionLabel, locationPillGroup);
 
     // === WORD DETAIL DENSITY SECTION ===
-    const densitySection = createElement("div", "captions-settings-section-v2");
-    const densitySectionLabel = createElement("div", "captions-settings-section-label-v2");
+    const densitySection = createElement("div", "captions-settings-section");
+    const densitySectionLabel = createElement("div", "captions-settings-section-label");
     densitySectionLabel.textContent = "WORD DETAIL DENSITY";
 
     // Helper function to create toggle switch
     function createToggle(label, id, checked) {
-      const toggleRow = createElement("div", "captions-toggle-row-v2");
-      const toggleLabel = createElement("label", "captions-toggle-label-v2");
+      const toggleRow = createElement("div", "captions-toggle-row");
+      const toggleLabel = createElement("label", "captions-toggle-label");
       toggleLabel.textContent = label;
       toggleLabel.htmlFor = id;
 
-      const toggleSwitch = createElement("label", "captions-toggle-switch-v2");
+      const toggleSwitch = createElement("label", "captions-toggle-switch");
       const toggleInput = createElement("input");
       toggleInput.type = "checkbox";
       toggleInput.id = id;
       toggleInput.checked = checked;
-      const toggleSlider = createElement("span", "captions-toggle-slider-v2");
+      const toggleSlider = createElement("span", "captions-toggle-slider");
 
       toggleSwitch.append(toggleInput, toggleSlider);
       toggleRow.append(toggleLabel, toggleSwitch);
@@ -1283,49 +1538,49 @@
     );
 
     // === CAPTION APPEARANCE SECTION ===
-    const appearanceSection = createElement("div", "captions-settings-section-v2");
-    const appearanceSectionLabel = createElement("div", "captions-settings-section-label-v2");
+    const appearanceSection = createElement("div", "captions-settings-section");
+    const appearanceSectionLabel = createElement("div", "captions-settings-section-label");
     appearanceSectionLabel.textContent = "CAPTION APPEARANCE";
 
     // Opacity Control
-    const capOpacityGroup = createElement("div", "captions-settings-group-v2");
-    const capOpacityLabel = createElement("label", "captions-settings-label-v2");
+    const capOpacityGroup = createElement("div", "captions-settings-group");
+    const capOpacityLabel = createElement("label", "captions-settings-label");
     capOpacityLabel.textContent = "Opacity";
-    const capOpacityControl = createElement("div", "captions-settings-control-v2");
-    const capOpacitySlider = createElement("input", "captions-settings-slider-v2");
+    const capOpacityControl = createElement("div", "captions-settings-control");
+    const capOpacitySlider = createElement("input", "captions-settings-slider");
     capOpacitySlider.type = "range";
     capOpacitySlider.min = "0.3";
     capOpacitySlider.max = "1";
     capOpacitySlider.step = "0.05";
     capOpacitySlider.value = config.captionOpacity.toString();
     capOpacitySlider.id = "caption-opacity-slider";
-    const capOpacityValue = createElement("span", "captions-settings-value-v2");
+    const capOpacityValue = createElement("span", "captions-settings-value");
     capOpacityValue.textContent = `${Math.round(config.captionOpacity * 100)}%`;
     capOpacityControl.append(capOpacitySlider, capOpacityValue);
     capOpacityGroup.append(capOpacityLabel, capOpacityControl);
 
     // Font Size Control
-    const capFontSizeGroup = createElement("div", "captions-settings-group-v2");
-    const capFontSizeLabel = createElement("label", "captions-settings-label-v2");
+    const capFontSizeGroup = createElement("div", "captions-settings-group");
+    const capFontSizeLabel = createElement("label", "captions-settings-label");
     capFontSizeLabel.textContent = "Font Size";
-    const capFontSizeControl = createElement("div", "captions-settings-control-v2");
-    const capFontSizeSlider = createElement("input", "captions-settings-slider-v2");
+    const capFontSizeControl = createElement("div", "captions-settings-control");
+    const capFontSizeSlider = createElement("input", "captions-settings-slider");
     capFontSizeSlider.type = "range";
     capFontSizeSlider.min = "14";
     capFontSizeSlider.max = "48";
     capFontSizeSlider.value = config.captionFontSize.toString();
     capFontSizeSlider.id = "caption-font-size-slider";
-    const capFontSizeValue = createElement("span", "captions-settings-value-v2");
+    const capFontSizeValue = createElement("span", "captions-settings-value");
     capFontSizeValue.textContent = `${config.captionFontSize}px`;
     capFontSizeControl.append(capFontSizeSlider, capFontSizeValue);
     capFontSizeGroup.append(capFontSizeLabel, capFontSizeControl);
 
     // Font Family Control
-    const capFontFamilyGroup = createElement("div", "captions-settings-group-v2");
-    const capFontFamilyLabel = createElement("label", "captions-settings-label-v2");
+    const capFontFamilyGroup = createElement("div", "captions-settings-group");
+    const capFontFamilyLabel = createElement("label", "captions-settings-label");
     capFontFamilyLabel.textContent = "Font Family";
-    const capFontFamilyControl = createElement("div", "captions-settings-control-v2");
-    const capFontFamilySelect = createElement("select", "captions-settings-select-v2");
+    const capFontFamilyControl = createElement("div", "captions-settings-control");
+    const capFontFamilySelect = createElement("select", "captions-settings-select");
     capFontFamilySelect.id = "caption-font-family-select";
 
     const fonts = [
@@ -1352,38 +1607,70 @@
     capFontFamilyControl.appendChild(capFontFamilySelect);
     capFontFamilyGroup.append(capFontFamilyLabel, capFontFamilyControl);
 
-    // Text Color Control
-    const capColorGroup = createElement("div", "captions-settings-group-v2");
-    const capColorLabel = createElement("label", "captions-settings-label-v2");
-    capColorLabel.textContent = "Text Color";
-    const capColorControl = createElement("div", "captions-settings-control-v2");
+    // Colors Control (Text + Background side by side)
+    const capColorGroup = createElement("div", "captions-settings-group");
+    const capColorLabel = createElement("label", "captions-settings-label");
+    capColorLabel.textContent = "Colors";
+    const capColorControl = createElement("div", "captions-settings-control");
+    capColorControl.style.gap = "8px";
+
+    const textColorWrap = createElement("div");
+    textColorWrap.style.flex = "1";
+    const textColorLabel = createElement("div");
+    textColorLabel.textContent = "Text";
+    textColorLabel.style.fontSize = "10px";
+    textColorLabel.style.color = "var(--text-muted)";
+    textColorLabel.style.marginBottom = "4px";
     const capColorInput = createElement("input");
     capColorInput.type = "color";
     capColorInput.value = config.captionColor;
     capColorInput.id = "caption-color-input";
     capColorInput.style.width = "100%";
-    capColorInput.style.height = "36px";
-    capColorInput.style.border = "1px solid var(--v2-border)";
+    capColorInput.style.height = "32px";
+    capColorInput.style.border = "1px solid var(--border)";
     capColorInput.style.borderRadius = "6px";
     capColorInput.style.cursor = "pointer";
-    capColorControl.appendChild(capColorInput);
+    textColorWrap.append(textColorLabel, capColorInput);
+
+    const bgColorWrap = createElement("div");
+    bgColorWrap.style.flex = "1";
+    const bgColorLabel = createElement("div");
+    bgColorLabel.textContent = "Background";
+    bgColorLabel.style.fontSize = "10px";
+    bgColorLabel.style.color = "var(--text-muted)";
+    bgColorLabel.style.marginBottom = "4px";
+    const capBgColorInput = createElement("input");
+    capBgColorInput.type = "color";
+    capBgColorInput.value = config.captionBgColor;
+    capBgColorInput.id = "caption-bg-color-input";
+    capBgColorInput.style.width = "100%";
+    capBgColorInput.style.height = "32px";
+    capBgColorInput.style.border = "1px solid var(--border)";
+    capBgColorInput.style.borderRadius = "6px";
+    capBgColorInput.style.cursor = "pointer";
+    bgColorWrap.append(bgColorLabel, capBgColorInput);
+
+    capColorControl.append(textColorWrap, bgColorWrap);
     capColorGroup.append(capColorLabel, capColorControl);
 
     // Width Control
-    const capWidthGroup = createElement("div", "captions-settings-group-v2");
-    const capWidthLabel = createElement("label", "captions-settings-label-v2");
+    const capWidthGroup = createElement("div", "captions-settings-group");
+    const capWidthLabel = createElement("label", "captions-settings-label");
     capWidthLabel.textContent = "Width";
-    const capWidthControl = createElement("div", "captions-settings-control-v2");
-    const capWidthSlider = createElement("input", "captions-settings-slider-v2");
+    const capWidthControl = createElement("div", "captions-settings-control");
+    const capWidthSlider = createElement("input", "captions-settings-slider");
     capWidthSlider.type = "range";
     capWidthSlider.min = "40";
     capWidthSlider.max = "100";
     capWidthSlider.value = config.captionWidth.toString();
     capWidthSlider.id = "caption-width-slider";
-    const capWidthValue = createElement("span", "captions-settings-value-v2");
+    const capWidthValue = createElement("span", "captions-settings-value");
     capWidthValue.textContent = `${config.captionWidth}%`;
     capWidthControl.append(capWidthSlider, capWidthValue);
     capWidthGroup.append(capWidthLabel, capWidthControl);
+
+    // Show Native YouTube Captions Toggle
+    const nativeCaptionsToggle = createToggle("Show Native YouTube Captions", "toggle-native-captions", config.showNativeCaptions);
 
     appearanceSection.append(
       appearanceSectionLabel,
@@ -1391,8 +1678,39 @@
       capFontSizeGroup,
       capFontFamilyGroup,
       capColorGroup,
-      capWidthGroup
+      capWidthGroup,
+      nativeCaptionsToggle.row
     );
+
+    // === THEME SECTION ===
+    const themeSection = createElement("div", "captions-settings-section");
+    const themeSectionLabel = createElement("div", "captions-settings-section-label");
+    themeSectionLabel.textContent = "THEME";
+    const themePillGroup = createElement("div", "captions-pill-group");
+
+    const darkPill = createElement("button", "captions-pill");
+    darkPill.type = "button";
+    darkPill.textContent = "Dark";
+    darkPill.dataset.value = "dark";
+    if (config.theme === "dark") darkPill.classList.add("is-active");
+
+    const lightPill = createElement("button", "captions-pill");
+    lightPill.type = "button";
+    lightPill.textContent = "Light";
+    lightPill.dataset.value = "light";
+    if (config.theme === "light") lightPill.classList.add("is-active");
+
+    themePillGroup.append(darkPill, lightPill);
+    themeSection.append(themeSectionLabel, themePillGroup);
+
+    // === TRANSLATION SECTION ===
+    const dualSection = createElement("div", "captions-settings-section");
+    const dualSectionLabel = createElement("div", "captions-settings-section-label");
+    dualSectionLabel.textContent = "TRANSLATION";
+
+    const dualToggle = createToggle("Show translate buttons in history", "toggle-dual-subtitles", config.dualSubtitles);
+
+    dualSection.append(dualSectionLabel, dualToggle.row);
 
     // Assemble all sections
     settingsContent.append(
@@ -1400,7 +1718,9 @@
       languageSection,
       locationSection,
       densitySection,
-      appearanceSection
+      appearanceSection,
+      themeSection,
+      dualSection
     );
 
     settingsPanel.append(settingsHeader, settingsClose, settingsContent);
@@ -1418,6 +1738,21 @@
       // For expand (opening), trigger resize slightly before to pre-shift YouTube
       if (willBeHidden === false) {
         window.dispatchEvent(new Event('resize'));
+
+        // Check if caption overlay is in danger zone (will be hidden under sidebar)
+        if (config.customPosition && floatingOverlay) {
+          const sidebarWidth = 402;
+          const safeMargin = 20; // Extra padding from sidebar edge
+
+          // If caption is positioned in the left danger zone
+          if (config.customPosition.left < sidebarWidth + safeMargin) {
+            // Move it to safe position (just right of sidebar)
+            config.customPosition.left = sidebarWidth + safeMargin;
+            floatingOverlay.style.left = `${config.customPosition.left}px`;
+            saveConfig();
+          }
+        }
+
         // Small delay to let YouTube start adjusting before sidebar appears
         setTimeout(() => {
           sidebar.classList.toggle("is-hidden");
@@ -1451,6 +1786,40 @@
 
     // Collapse button - toggles entire sidebar visibility
     collapseButton.addEventListener("click", toggleSidebar);
+
+    // History button - toggles sidebar visibility
+    historyButton.addEventListener("click", toggleSidebar);
+
+    // Recenter button - repositions caption overlay to video center
+    function recenterOverlay() {
+      const video = document.querySelector("video");
+      if (!video) return;
+
+      const videoRect = video.getBoundingClientRect();
+      const overlayRect = floatingOverlay.getBoundingClientRect();
+
+      // Center horizontally and position near bottom of video
+      const centerLeft = videoRect.left + (videoRect.width - overlayRect.width) / 2;
+      const bottomTop = videoRect.bottom - overlayRect.height - 60;
+
+      floatingOverlay.style.top = `${bottomTop}px`;
+      floatingOverlay.style.left = `${centerLeft}px`;
+      floatingOverlay.style.bottom = "auto";
+      floatingOverlay.style.transform = "none";
+
+      // Save new position
+      config.customPosition = {
+        top: bottomTop,
+        left: centerLeft,
+        width: `${overlayRect.width}px`
+      };
+      saveConfig();
+    }
+
+    recenterButton.addEventListener("click", (e) => {
+      e.stopPropagation();
+      recenterOverlay();
+    });
 
     // Drag functionality for floating overlay
     dragHandle.addEventListener("mousedown", (e) => {
@@ -1684,6 +2053,45 @@ STATS:
       saveConfig();
     });
 
+    nativeCaptionsToggle.input.addEventListener("change", (e) => {
+      config.showNativeCaptions = e.target.checked;
+      updateNativeCaptionsVisibility();
+      flashStatus(`Native captions: ${e.target.checked ? "shown" : "hidden"}`);
+      saveConfig();
+    });
+
+    // === THEME PILLS ===
+    function applyTheme(theme) {
+      root.classList.remove("theme-dark", "theme-light");
+      root.classList.add(`theme-${theme}`);
+    }
+
+    function handleThemePillClick(e) {
+      const value = e.currentTarget.dataset.value;
+      config.theme = value;
+
+      darkPill.classList.toggle("is-active", value === "dark");
+      lightPill.classList.toggle("is-active", value === "light");
+
+      applyTheme(value);
+      flashStatus(`Theme: ${value}`);
+      saveConfig();
+    }
+
+    darkPill.addEventListener("click", handleThemePillClick);
+    lightPill.addEventListener("click", handleThemePillClick);
+
+    // Apply initial theme
+    applyTheme(config.theme);
+
+    // === TRANSLATION TOGGLE ===
+    dualToggle.input.addEventListener("change", (e) => {
+      config.dualSubtitles = e.target.checked;
+      renderHistory(); // Re-render to show/hide translate buttons
+      flashStatus(`Translation: ${e.target.checked ? "enabled" : "disabled"}`);
+      saveConfig();
+    });
+
     // === LANGUAGE SELECTORS ===
     learningLangSelect.addEventListener("change", (e) => {
       config.dictionaryLang = e.target.value;
@@ -1693,13 +2101,13 @@ STATS:
 
     sourceLangSelect.addEventListener("change", (e) => {
       config.sourceLang = e.target.value;
-      flashStatus(`Source language: ${e.target.options[e.target.selectedIndex].text}`);
+      flashStatus(`Captions in: ${e.target.options[e.target.selectedIndex].text}`);
       saveConfig();
     });
 
     targetLangSelect.addEventListener("change", (e) => {
       config.targetLang = e.target.value;
-      flashStatus(`Target language: ${e.target.options[e.target.selectedIndex].text}`);
+      flashStatus(`Translate to: ${e.target.options[e.target.selectedIndex].text}`);
       saveConfig();
     });
 
@@ -1714,7 +2122,7 @@ STATS:
       const value = parseFloat(e.target.value);
       config.captionOpacity = value;
       capOpacityValue.textContent = `${Math.round(value * 100)}%`;
-      floatingOverlay.style.background = `rgba(0, 0, 0, ${value})`;
+      applyBgColor();
       saveConfig();
     });
 
@@ -1741,6 +2149,21 @@ STATS:
       saveConfig();
     });
 
+    capBgColorInput.addEventListener("input", (e) => {
+      config.captionBgColor = e.target.value;
+      applyBgColor();
+      saveConfig();
+    });
+
+    function applyBgColor() {
+      // Convert hex to rgba with opacity
+      const hex = config.captionBgColor;
+      const r = parseInt(hex.slice(1, 3), 16);
+      const g = parseInt(hex.slice(3, 5), 16);
+      const b = parseInt(hex.slice(5, 7), 16);
+      floatingOverlay.style.background = `rgba(${r}, ${g}, ${b}, ${config.captionOpacity})`;
+    }
+
     // Caption Width Slider
     capWidthSlider.addEventListener("input", (e) => {
       const value = parseInt(e.target.value, 10);
@@ -1760,15 +2183,14 @@ STATS:
       if (!(event.target instanceof Element)) {
         return;
       }
-      const wordEl = event.target.closest(".captions-word-v2");
+      const wordEl = event.target.closest(".captions-word");
       if (!wordEl) {
         return;
       }
 
+      // Pause immediately for responsiveness (no rewind - keeps caption stable)
       const video = getVideo();
       if (video) {
-        const nextTime = Math.max(0, video.currentTime - REPLAY_BACK_SECONDS);
-        video.currentTime = nextTime;
         video.pause();
       }
 
@@ -1777,41 +2199,53 @@ STATS:
         return;
       }
 
-      flashStatus(`Replaying: ${wordText}`);
+      flashStatus(`Looking up: ${wordText}`);
       state.activeWord = wordText;
 
       // Show popup
       popup.classList.add("is-open");
 
-      // Position popup above the clicked word
+      // Position popup - use saved position or position above clicked word
       const wordRect = wordEl.getBoundingClientRect();
-      const container = popup.querySelector(".captions-popup-container-v2");
-      const arrow = popup.querySelector(".captions-popup-arrow-v2");
+      const container = popup.querySelector(".captions-popup-container");
+      const arrow = popup.querySelector(".captions-popup-arrow");
 
       if (container) {
-        const popupWidth = 420; // max-width from CSS
-        const popupHeight = 400; // estimated
-        const arrowSize = 12; // arrow height in pixels
+        if (config.popupPosition) {
+          // Use saved position
+          container.style.left = `${config.popupPosition.left}px`;
+          container.style.top = `${config.popupPosition.top}px`;
+          // Hide arrow when using saved position (not pointing at word)
+          if (arrow) {
+            arrow.style.display = "none";
+          }
+        } else {
+          // Position above the clicked word
+          const popupWidth = 420; // max-width from CSS
+          const popupHeight = 400; // estimated
+          const arrowSize = 12; // arrow height in pixels
 
-        // Center popup horizontally over the word, but keep it on screen
-        let left = wordRect.left + (wordRect.width / 2) - (popupWidth / 2);
-        left = Math.max(20, Math.min(left, window.innerWidth - popupWidth - 20));
+          // Center popup horizontally over the word, but keep it on screen
+          let left = wordRect.left + (wordRect.width / 2) - (popupWidth / 2);
+          left = Math.max(20, Math.min(left, window.innerWidth - popupWidth - 20));
 
-        // Position above the word with gap for arrow
-        const top = wordRect.top - popupHeight - arrowSize - 10;
+          // Position above the word with gap for arrow
+          const top = wordRect.top - popupHeight - arrowSize - 10;
 
-        container.style.left = `${left}px`;
-        container.style.top = `${Math.max(20, top)}px`;
+          container.style.left = `${left}px`;
+          container.style.top = `${Math.max(20, top)}px`;
 
-        // Position arrow to point at the word center
-        if (arrow) {
-          const arrowLeft = wordRect.left + (wordRect.width / 2) - left - 12; // 12 = half arrow width
-          arrow.style.left = `${arrowLeft}px`;
+          // Position arrow to point at the word center
+          if (arrow) {
+            arrow.style.display = "";
+            const arrowLeft = wordRect.left + (wordRect.width / 2) - left - 12; // 12 = half arrow width
+            arrow.style.left = `${arrowLeft}px`;
+          }
         }
       }
 
       state.popupOpen = true;
-      popupContent.innerHTML = '<div class="captions-popup-loading-v2">Loading definition...</div>';
+      popupContent.innerHTML = '<div class="captions-popup-loading">Loading definition...</div>';
 
       // Lookup word
       const language = config.dictionaryLang || "en";
@@ -1837,7 +2271,7 @@ STATS:
         if (!state.popupOpen) {
           return;
         }
-        popupContent.innerHTML = '<div class="captions-popup-error-v2">Definition not found</div>';
+        popupContent.innerHTML = '<div class="captions-popup-error">Definition not found</div>';
       }
     });
 
@@ -1864,7 +2298,7 @@ STATS:
       }
     });
 
-    function renderPopupContent(container, parsed) {
+    async function renderPopupContent(container, parsed) {
       container.textContent = "";
 
       // Word header with phonetic and pronunciation button
@@ -1872,20 +2306,20 @@ STATS:
       wordHeader.style.display = "flex";
       wordHeader.style.alignItems = "center";
       wordHeader.style.justifyContent = "space-between";
-      wordHeader.style.marginBottom = "20px";
+      wordHeader.style.marginBottom = "16px";
 
       const wordInfo = createElement("div");
-      const wordEl = createElement("div", "captions-popup-word-v2");
+      const wordEl = createElement("div", "captions-popup-word");
       wordEl.textContent = parsed.word;
 
-      const phoneticEl = createElement("div", "captions-popup-phonetic-v2");
+      const phoneticEl = createElement("div", "captions-popup-phonetic");
       phoneticEl.textContent = parsed.pronunciations.length ? `/${parsed.pronunciations[0]}/` : "";
 
       wordInfo.append(wordEl, phoneticEl);
 
-      const speakBtn = createElement("button", "captions-popup-speak-v2");
+      const speakBtn = createElement("button", "captions-popup-speak");
       speakBtn.type = "button";
-      speakBtn.innerHTML = "🔊";
+      speakBtn.appendChild(createSVGIcon("volume", 20));
       speakBtn.addEventListener("click", () => {
         speakWord(parsed.word, config.dictionaryLang, parsed.audioUrl);
       });
@@ -1893,86 +2327,65 @@ STATS:
       wordHeader.append(wordInfo, speakBtn);
       container.appendChild(wordHeader);
 
-      // Definition section
-      if (parsed.definitions.length) {
-        const defSection = createElement("div", "captions-popup-section-v2");
-        const defLabel = createElement("div", "captions-popup-label-v2");
+      // Translation section (translation mode, or learning mode with translation enabled)
+      const showTranslation = config.mode === "translation" || config.dualSubtitles;
+      if (showTranslation) {
+        const transSection = createElement("div", "captions-popup-section");
+        const transLabel = createElement("div", "captions-popup-label");
+        transLabel.textContent = config.targetLang.toUpperCase();
+
+        const transValue = createElement("div", "captions-popup-translation");
+        transValue.textContent = "...";
+
+        transSection.append(transLabel, transValue);
+        container.appendChild(transSection);
+
+        // Fetch translation async
+        translateText(parsed.word, config.sourceLang, config.targetLang)
+          .then(translation => {
+            transValue.textContent = translation;
+          });
+      }
+
+      // Definition (if enabled and available)
+      if (config.showDefinitions && parsed.definitions.length) {
+        const defSection = createElement("div", "captions-popup-section");
+        const defLabel = createElement("div", "captions-popup-label");
         defLabel.textContent = "DEFINITION";
 
-        const defValue = createElement("div", "captions-popup-definition-v2");
-        defValue.textContent = parsed.definitions[0]; // Show first definition
+        const defValue = createElement("div", "captions-popup-definition");
+        defValue.textContent = parsed.definitions[0];
 
         defSection.append(defLabel, defValue);
         container.appendChild(defSection);
       }
 
-      // Translation section (placeholder for now - will need translation API)
-      const transSection = createElement("div", "captions-popup-section-v2");
-      const transLabel = createElement("div", "captions-popup-label-v2");
-      transLabel.textContent = "TRANSLATION";
-
-      const transValue = createElement("div", "captions-popup-value-v2");
-      transValue.textContent = "(Translation coming soon)";
-
-      transSection.append(transLabel, transValue);
-      container.appendChild(transSection);
-
-      // Context section
-      const contextSection = createElement("div", "captions-popup-section-v2");
-      const contextLabel = createElement("div", "captions-popup-label-v2");
-      contextLabel.textContent = "CONTEXT";
-
-      const contextBadge = createElement("span", "captions-popup-context-badge-v2");
-      contextBadge.textContent = "Video Sync";
-
-      contextSection.append(contextLabel, contextBadge);
-      container.appendChild(contextSection);
-
-      // Example section
-      if (parsed.examples && parsed.examples.length > 0) {
-        const exampleSection = createElement("div", "captions-popup-section-v2");
-        const exampleLabel = createElement("div", "captions-popup-label-v2");
+      // Examples (if enabled and available)
+      if (config.showExamples && parsed.examples && parsed.examples.length > 0) {
+        const exampleSection = createElement("div", "captions-popup-section");
+        const exampleLabel = createElement("div", "captions-popup-label");
         exampleLabel.textContent = "EXAMPLE";
 
-        const exampleValue = createElement("div", "captions-popup-example-v2");
+        const exampleValue = createElement("div", "captions-popup-example");
         exampleValue.textContent = `"${parsed.examples[0]}"`;
 
         exampleSection.append(exampleLabel, exampleValue);
         container.appendChild(exampleSection);
       }
 
-      if (!parsed.definitions.length) {
-        const noData = createElement("div", "captions-popup-error-v2");
+      // Show error only if nothing to display
+      if (!showTranslation && !parsed.definitions.length) {
+        const noData = createElement("div", "captions-popup-error");
         noData.textContent = "No definition available";
         container.appendChild(noData);
       }
     }
 
-    historyList.addEventListener("click", (event) => {
-      if (!(event.target instanceof Element)) {
-        return;
-      }
-      const item = event.target.closest(".captions-history-item-v2");
-      if (!item) {
-        return;
-      }
-      const time = Number(item.dataset.time);
-      if (!Number.isFinite(time)) {
-        return;
-      }
-      const video = getVideo();
-      if (video) {
-        video.currentTime = Math.max(0, time - 0.5);
-        video.play().catch(() => {});
-        flashStatus(`Jumped to ${formatTimestamp(time)}`);
-      }
-    });
-
     // Initialize styles from config
     overlay.style.fontSize = `${config.captionFontSize}px`;
     overlay.style.fontFamily = config.captionFontFamily;
     overlay.style.color = config.captionColor;
-    floatingOverlay.style.background = `rgba(0, 0, 0, ${config.captionOpacity})`;
+    applyBgColor(); // Apply background with color and opacity
 
     // Apply saved sidebar visibility state
     if (config.sidebarCollapsed) {
@@ -1985,6 +2398,13 @@ STATS:
     checkVideoChange();  // Set initial video ID
     renderHistory();
     attachCaptionObserver(overlay);
+
+    // Auto-center overlay on first load (if no custom position saved)
+    if (!config.customPosition) {
+      setTimeout(() => {
+        recenterOverlay();
+      }, 500);
+    }
     applyOverlayState(overlay, getOverlayState());
     updateOverlayPosition();
 
@@ -1993,6 +2413,7 @@ STATS:
       checkVideoChange();  // Detect video navigation and clear state
       attachCaptionObserver(overlay);
       applyOverlayState(overlay, getOverlayState());
+      updateNativeCaptionsVisibility(); // Keep native captions visibility in sync
     }, CAPTION_POLL_MS);
 
     // Update overlay position on resize/scroll

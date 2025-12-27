@@ -1,9 +1,14 @@
 {
   "manifest_version": 3,
-  "name": "Captions",
-  "description": "Practice speaking by showing captions in the same language or translations on YouTube.",
-  "version": "0.2.0",
+  "name": "SideCap",
+  "description": "Learn languages faster with interactive YouTube captions - word lookup, translations, and clean transcripts in a beautiful sidebar.",
+  "version": "0.5.0",
   "permissions": ["storage"],
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
   "content_scripts": [
     {
       "matches": [
@@ -13,6 +18,12 @@
       "js": ["extension/content.js"],
       "css": ["extension/styles.css"],
       "run_at": "document_idle"
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": ["icons/*.png"],
+      "matches": ["https://www.youtube.com/*", "https://m.youtube.com/*"]
     }
   ]
 }
