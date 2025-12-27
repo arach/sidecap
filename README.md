@@ -1,6 +1,12 @@
-# SideCap
+<p align="center">
+  <img src="icons/icon128.png" alt="SideCap Logo" width="128" height="128">
+</p>
 
-Learn languages faster with interactive YouTube captions - word lookup, translations, and clean transcripts in a beautiful sidebar.
+<h1 align="center">SideCap</h1>
+
+<p align="center">
+  Learn languages faster with interactive YouTube captions - word lookup, translations, and clean transcripts in a beautiful sidebar.
+</p>
 
 ![SideCap Overlay](Screenshots/overlay-dark.png)
 
