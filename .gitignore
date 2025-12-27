@@ -6,6 +6,3 @@
 
 # Claude local settings
 .claude/settings.local.json
-
-# Screenshots (keep in releases, not repo)
-Screenshots/
