@@ -8,7 +8,7 @@
   Learn languages faster with interactive YouTube captions - word lookup, translations, and clean transcripts in a beautiful sidebar.
 </p>
 
-![SideCap Overlay](Screenshots/overlay-dark.png)
+![SideCap Hero](Screenshots/hero.png)
 
 ## Features
 
@@ -21,9 +21,9 @@
 
 ## Screenshots
 
-| Sidebar | Word Popup | Settings |
-|---------|------------|----------|
-| ![Sidebar](Screenshots/sidebar-dark.png) | ![Popup](Screenshots/popup-dark.png) | ![Settings](Screenshots/settings.png) |
+| Caption Overlay | Word Popup | Settings |
+|-----------------|------------|----------|
+| ![Overlay](Screenshots/overlay.png) | ![Popup](Screenshots/popup-translation.png) | ![Settings](Screenshots/settings.png) |
 
 ## Installation
 
