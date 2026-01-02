@@ -102,24 +102,119 @@
     }
   }
 
+  // Site adapters - define caption selectors for each supported site
+  const siteAdapters = {
+    youtube: {
+      name: "YouTube",
+      captionContainer: ".ytp-caption-window-container",
+      captionSelectors: [".ytp-caption-segment"],
+      videoSelector: "video.html5-main-video, video",
+    },
+    ina: {
+      name: "INA.fr / Madelen",
+      captionContainer: ".bmpui-ui-subtitle-overlay",
+      captionSelectors: [".bmpui-ui-subtitle-label", ".bmpui-subtitle-region-container span"],
+      videoSelector: "video",
+      playerType: "bitmovin",
+    },
+    netflix: {
+      name: "Netflix",
+      captionContainer: ".player-timedtext",
+      captionSelectors: [".player-timedtext span", ".player-timedtext-text-container span"],
+      videoSelector: "video",
+    },
+    primevideo: {
+      name: "Amazon Prime Video",
+      captionContainer: ".webPlayerSDKContainer",
+      captionSelectors: [".atvwebplayersdk-captions-text", "[class*='timedTextBackground']"],
+      videoSelector: "video",
+    },
+    disneyplus: {
+      name: "Disney+",
+      captionContainer: ".btm-media-overlays-container",
+      captionSelectors: ["[data-testid='subtitles'] span"],
+      videoSelector: "video",
+    },
+    vimeo: {
+      name: "Vimeo",
+      captionContainer: ".player-container",
+      captionSelectors: [".vp-captions span"],
+      videoSelector: "video",
+    },
+    bitmovin: {
+      name: "Bitmovin Player",
+      captionContainer: ".bmpui-ui-subtitle-overlay",
+      captionSelectors: [".bmpui-ui-subtitle-label"],
+      videoSelector: "video",
+    },
+    videojs: {
+      name: "Video.js",
+      captionContainer: ".video-js",
+      captionSelectors: [".vjs-text-track-display div"],
+      videoSelector: "video",
+    },
+    jwplayer: {
+      name: "JW Player",
+      captionContainer: ".jwplayer",
+      captionSelectors: [".jw-captions", ".jw-text-track-display"],
+      videoSelector: "video",
+    },
+  };
+
   // Site detection - determine which video player we're dealing with
   function detectSite() {
     const hostname = window.location.hostname;
-    if (hostname.includes("youtube.com")) {
-      return "youtube";
-    }
-    if (hostname.includes("ina.fr")) {
-      return "ina";
-    }
-    // Check for Bitmovin player on any site
-    if (document.querySelector(".bmpui-ui-uicontainer")) {
-      return "bitmovin";
-    }
+
+    // Check by hostname first
+    if (hostname.includes("youtube.com")) return "youtube";
+    if (hostname.includes("netflix.com")) return "netflix";
+    if (hostname.includes("primevideo.com") || hostname.includes("amazon.com/gp/video")) return "primevideo";
+    if (hostname.includes("disneyplus.com")) return "disneyplus";
+    if (hostname.includes("vimeo.com")) return "vimeo";
+    if (hostname.includes("ina.fr")) return "ina";
+
+    // Check by player presence
+    if (document.querySelector(".bmpui-ui-uicontainer")) return "bitmovin";
+    if (document.querySelector(".video-js")) return "videojs";
+    if (document.querySelector(".jwplayer")) return "jwplayer";
+
     return "unknown";
   }
 
+  function getSiteAdapter() {
+    const site = detectSite();
+    return siteAdapters[site] || null;
+  }
+
+  function getCaptionContainer() {
+    const adapter = getSiteAdapter();
+    if (adapter && adapter.captionContainer) {
+      return document.querySelector(adapter.captionContainer);
+    }
+    // Fallback: try YouTube selector
+    return document.querySelector(".ytp-caption-window-container");
+  }
+
+  function getNativeCaptionText() {
+    const adapter = getSiteAdapter();
+    if (!adapter) return null;
+
+    for (const selector of adapter.captionSelectors || []) {
+      const elements = document.querySelectorAll(selector);
+      if (elements.length > 0) {
+        const text = Array.from(elements)
+          .map(el => el.textContent?.trim())
+          .filter(t => t && t.length > 0)
+          .join(" ");
+        if (text) return text;
+      }
+    }
+    return null;
+  }
+
   const currentSite = detectSite();
-  console.log("[SideCap] Detected site:", currentSite);
+  const currentAdapter = getSiteAdapter();
+  console.log("[SideCap] Detected site:", currentSite, currentAdapter?.name || "Unknown");
 
   // Apply native captions visibility on load
   setTimeout(() => {
@@ -376,6 +471,25 @@
         <rect x="2" y="4" width="20" height="16" rx="2" ry="2"/>
         <text x="5.5" y="15" font-size="8" font-weight="bold" fill="currentColor" stroke="none">SC</text>
         <line x1="3" x2="21" y1="3" y2="21" stroke-width="2"/>
+      `;
+    } else if (type === "help-circle") {
+      // lucide: help-circle
+      svg.innerHTML = `
+        <circle cx="12" cy="12" r="10"/>
+        <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/>
+        <line x1="12" x2="12.01" y1="17" y2="17"/>
+      `;
+    } else if (type === "clipboard") {
+      // lucide: clipboard (for copy report)
+      svg.innerHTML = `
+        <rect width="8" height="4" x="8" y="2" rx="1" ry="1"/>
+        <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/>
+      `;
+    } else if (type === "mail") {
+      // lucide: mail (for email report)
+      svg.innerHTML = `
+        <rect width="20" height="16" x="2" y="4" rx="2"/>
+        <path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/>
       `;
     }
 
@@ -650,8 +764,15 @@
       return getBitmovinCaptionText();
     }
 
-    // Unknown site - try both
-    return getYouTubeCaptionText() || getBitmovinCaptionText();
+    // For other known sites, try using the adapter
+    const adapter = getSiteAdapter();
+    if (adapter) {
+      const text = getNativeCaptionText();
+      if (text) return text;
+    }
+
+    // Unknown site - try known patterns
+    return getYouTubeCaptionText() || getBitmovinCaptionText() || getNativeCaptionText() || "";
   }
 
   function getCaptionsButton() {
@@ -1255,7 +1376,8 @@
   }
 
   function attachCaptionObserver(overlay) {
-    const container = document.querySelector(".ytp-caption-window-container");
+    // Use adapter-aware container detection
+    const container = getCaptionContainer();
     if (!container && state.captionObserver) {
       state.captionObserver.disconnect();
       state.captionObserver = null;
@@ -1278,6 +1400,7 @@
         subtree: true,
         characterData: true,
       });
+      console.log("[SideCap] Caption observer attached to:", container.className || container.tagName);
     }
   }
 
@@ -1420,7 +1543,12 @@
     settingsIcon.appendChild(createSVGIcon("settings", 18));
     settingsIcon.title = "Settings";
 
-    titleRight.append(collapseButton, settingsIcon);
+    const helpButton = createElement("button", "captions-help-button");
+    helpButton.type = "button";
+    helpButton.appendChild(createSVGIcon("help-circle", 16));
+    helpButton.title = "Help enable this site";
+
+    titleRight.append(helpButton, collapseButton, settingsIcon);
 
     titleBar.append(titleLeft, titleRight);
 
@@ -1969,8 +2097,218 @@
 
     settingsPanel.append(settingsHeader, settingsClose, settingsContent);
 
+    // Site Report Panel - "Help Enable This Site"
+    const siteReportPanel = createElement("div", "captions-site-report-panel");
+    siteReportPanel.id = "captions-site-report-panel";
+
+    const siteReportHeader = createElement("div", "captions-site-report-header");
+    const siteReportTitle = createElement("div", "captions-site-report-title");
+    siteReportTitle.textContent = "Help Enable This Site";
+
+    const siteReportClose = createElement("button", "captions-site-report-close");
+    siteReportClose.type = "button";
+    siteReportClose.innerHTML = "×";
+    siteReportClose.title = "Close";
+
+    siteReportHeader.append(siteReportTitle, siteReportClose);
+
+    const siteReportContent = createElement("div", "captions-site-report-content");
+
+    // Site detection functions (inline for content script)
+    function analyzeSite() {
+      const captionPatterns = [/caption/i, /subtitle/i, /timedtext/i, /closed.?caption/i, /text.?track/i];
+
+      // Find videos
+      const videos = document.querySelectorAll("video");
+      const videoInfo = Array.from(videos).map((video) => ({
+        hasTextTracks: video.textTracks?.length > 0,
+        textTrackCount: video.textTracks?.length || 0,
+      }));
+
+      // Detect players
+      const players = [];
+      const domChecks = [
+        { name: "Video.js", selector: ".video-js" },
+        { name: "JW Player", selector: ".jwplayer" },
+        { name: "Bitmovin", selector: ".bmpui-ui-uicontainer" },
+        { name: "Plyr", selector: ".plyr" },
+        { name: "Flowplayer", selector: ".flowplayer" },
+        { name: "Brightcove", selector: ".bc-player-default" },
+        { name: "Wistia", selector: ".wistia_embed" },
+      ];
+      for (const { name, selector } of domChecks) {
+        if (document.querySelector(selector)) {
+          players.push(name);
+        }
+      }
+
+      // Find potential caption elements
+      const potentialSelectors = [];
+      const allElements = document.querySelectorAll("*");
+      for (const el of allElements) {
+        const className = el.className?.toString() || "";
+        const id = el.id || "";
+        for (const pattern of captionPatterns) {
+          if ((pattern.test(className) || pattern.test(id)) && el.textContent?.trim()) {
+            const selector = el.id ? `#${el.id}` :
+              (el.classList?.[0] ? `${el.tagName.toLowerCase()}.${el.classList[0]}` : el.tagName.toLowerCase());
+            if (!potentialSelectors.find(s => s.selector === selector)) {
+              potentialSelectors.push({
+                selector,
+                sample: el.textContent.trim().slice(0, 50)
+              });
+            }
+            break;
+          }
+        }
+      }
+
+      // Check for native text tracks
+      const hasNativeCaptions = videoInfo.some(v => v.hasTextTracks);
+
+      return {
+        url: window.location.hostname,
+        videoCount: videos.length,
+        hasNativeCaptions,
+        players,
+        potentialSelectors: potentialSelectors.slice(0, 5),
+      };
+    }
+
+    function generateReport(analysis) {
+      const lines = [
+        `# SideCap Site Report`,
+        ``,
+        `**Site:** ${analysis.url}`,
+        `**Date:** ${new Date().toISOString().split('T')[0]}`,
+        ``,
+        `## Detection`,
+        `- Videos found: ${analysis.videoCount}`,
+        `- Native captions: ${analysis.hasNativeCaptions ? "Yes" : "No"}`,
+        `- Player detected: ${analysis.players.join(", ") || "Unknown/Native"}`,
+        ``,
+      ];
+
+      if (analysis.potentialSelectors.length > 0) {
+        lines.push(`## Potential Caption Selectors`);
+        for (const sel of analysis.potentialSelectors) {
+          lines.push(`- \`${sel.selector}\` → "${sel.sample}..."`);
+        }
+        lines.push(``);
+      }
+
+      lines.push(`## Request`);
+      lines.push(`Please add support for this site to SideCap!`);
+
+      return lines.join("\n");
+    }
+
+    function updateSiteReport() {
+      const analysis = analyzeSite();
+
+      // Status section
+      const statusSection = createElement("div", "captions-site-report-status");
+      const statusIcon = createElement("div", "captions-site-report-status-icon");
+      const statusText = createElement("div", "captions-site-report-status-text");
+
+      if (analysis.hasNativeCaptions) {
+        statusIcon.classList.add("has-captions");
+        statusIcon.textContent = "✓";
+        statusText.textContent = "Native captions detected! SideCap should work with this site.";
+      } else if (analysis.videoCount > 0) {
+        statusIcon.classList.add("no-captions");
+        statusIcon.textContent = "?";
+        statusText.textContent = "Video found but no native captions detected. Smart Captions can help!";
+      } else {
+        statusIcon.classList.add("unknown");
+        statusIcon.textContent = "○";
+        statusText.textContent = "No video element found on this page.";
+      }
+
+      statusSection.append(statusIcon, statusText);
+
+      // Info section
+      const infoSection = createElement("div", "captions-site-report-section");
+      const infoTitle = createElement("div", "captions-site-report-section-title");
+      infoTitle.textContent = "Site Information";
+
+      const infoGrid = createElement("div", "captions-site-report-info");
+      infoGrid.innerHTML = `
+        <span class="captions-site-report-label">Domain:</span>
+        <span class="captions-site-report-value">${analysis.url}</span>
+        <span class="captions-site-report-label">Videos:</span>
+        <span class="captions-site-report-value">${analysis.videoCount}</span>
+        <span class="captions-site-report-label">Player:</span>
+        <span class="captions-site-report-value">${analysis.players.join(", ") || "Unknown"}</span>
+      `;
+
+      infoSection.append(infoTitle, infoGrid);
+
+      // Selectors section (if any found)
+      let selectorsSection = null;
+      if (analysis.potentialSelectors.length > 0) {
+        selectorsSection = createElement("div", "captions-site-report-section");
+        const selectorsTitle = createElement("div", "captions-site-report-section-title");
+        selectorsTitle.textContent = "Potential Caption Selectors";
+
+        const selectorsList = createElement("div", "captions-site-report-selectors");
+        selectorsList.innerHTML = analysis.potentialSelectors
+          .map(s => `<code>${s.selector}</code> → "${s.sample}..."`)
+          .join("<br>");
+
+        selectorsSection.append(selectorsTitle, selectorsList);
+      }
+
+      // Actions
+      const actionsSection = createElement("div", "captions-site-report-actions");
+
+      const copyBtn = createElement("button", "captions-site-report-btn primary");
+      copyBtn.appendChild(createSVGIcon("clipboard", 14));
+      copyBtn.appendChild(document.createTextNode("Copy Report"));
+      copyBtn.onclick = () => {
+        const report = generateReport(analysis);
+        navigator.clipboard.writeText(report).then(() => {
+          showCopiedToast("Report copied to clipboard!");
+        });
+      };
+
+      const emailBtn = createElement("button", "captions-site-report-btn secondary");
+      emailBtn.appendChild(createSVGIcon("mail", 14));
+      emailBtn.appendChild(document.createTextNode("Email Report"));
+      emailBtn.onclick = () => {
+        const report = generateReport(analysis);
+        const subject = encodeURIComponent(`SideCap Site Support Request: ${analysis.url}`);
+        const body = encodeURIComponent(report);
+        window.open(`mailto:?subject=${subject}&body=${body}`);
+      };
+
+      actionsSection.append(copyBtn, emailBtn);
+
+      // Clear and rebuild content
+      siteReportContent.innerHTML = "";
+      siteReportContent.append(statusSection, infoSection);
+      if (selectorsSection) {
+        siteReportContent.appendChild(selectorsSection);
+      }
+      siteReportContent.appendChild(actionsSection);
+    }
+
+    // Toast notification
+    const copiedToast = createElement("div", "captions-copied-toast");
+    copiedToast.textContent = "Copied!";
+
+    function showCopiedToast(message = "Copied!") {
+      copiedToast.textContent = message;
+      copiedToast.classList.add("is-visible");
+      setTimeout(() => {
+        copiedToast.classList.remove("is-visible");
+      }, 2000);
+    }
+
+    siteReportPanel.append(siteReportHeader, siteReportContent);
+
     // Assemble
-    root.append(floatingToggle, sidebar, floatingOverlay, popup, settingsPanel);
+    root.append(floatingToggle, sidebar, floatingOverlay, popup, settingsPanel, siteReportPanel, copiedToast);
     document.body.appendChild(root);
 
     // Event Handlers
@@ -2257,6 +2595,20 @@ STATS:
     // Settings close button
     settingsClose.addEventListener("click", () => {
       settingsPanel.classList.remove("is-visible");
+    });
+
+    // Help button - opens site report panel
+    helpButton.addEventListener("click", (e) => {
+      e.stopPropagation();
+      updateSiteReport(); // Refresh analysis when opening
+      siteReportPanel.classList.toggle("is-visible");
+      // Close settings if open
+      settingsPanel.classList.remove("is-visible");
+    });
+
+    // Site report close button
+    siteReportClose.addEventListener("click", () => {
+      siteReportPanel.classList.remove("is-visible");
     });
 
     // === MODE PILL BUTTONS ===
