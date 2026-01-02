@@ -55,15 +55,21 @@
 
   const config = { ...defaultConfig };
 
-  // Load config from storage
+  // Load config from storage (returns promise)
   function loadConfig() {
-    if (typeof chrome !== "undefined" && chrome.storage) {
-      chrome.storage.local.get("captionsConfig", (result) => {
-        if (result.captionsConfig) {
-          Object.assign(config, result.captionsConfig);
-        }
-      });
-    }
+    return new Promise((resolve) => {
+      if (typeof chrome !== "undefined" && chrome.storage) {
+        chrome.storage.local.get("captionsConfig", (result) => {
+          if (result.captionsConfig) {
+            Object.assign(config, result.captionsConfig);
+            console.log("[SideCap] Config loaded, sidebarCollapsed:", config.sidebarCollapsed);
+          }
+          resolve();
+        });
+      } else {
+        resolve();
+      }
+    });
   }
 
   // Save config to storage
@@ -73,19 +79,47 @@
     }
   }
 
-  // Update native YouTube captions visibility based on config
+  // Update native captions visibility based on config
   function updateNativeCaptionsVisibility() {
-    const container = document.querySelector(".ytp-caption-window-container");
-    if (container) {
+    // YouTube captions
+    const ytContainer = document.querySelector(".ytp-caption-window-container");
+    if (ytContainer) {
       if (config.showNativeCaptions) {
-        container.classList.remove("sidecap-native-hidden");
+        ytContainer.classList.remove("sidecap-native-hidden");
       } else {
-        container.classList.add("sidecap-native-hidden");
+        ytContainer.classList.add("sidecap-native-hidden");
+      }
+    }
+
+    // Bitmovin captions
+    const bmpContainer = document.querySelector(".bmpui-ui-subtitle-overlay");
+    if (bmpContainer) {
+      if (config.showNativeCaptions) {
+        bmpContainer.classList.remove("sidecap-native-hidden");
+      } else {
+        bmpContainer.classList.add("sidecap-native-hidden");
       }
     }
   }
 
-  loadConfig();
+  // Site detection - determine which video player we're dealing with
+  function detectSite() {
+    const hostname = window.location.hostname;
+    if (hostname.includes("youtube.com")) {
+      return "youtube";
+    }
+    if (hostname.includes("ina.fr")) {
+      return "ina";
+    }
+    // Check for Bitmovin player on any site
+    if (document.querySelector(".bmpui-ui-uicontainer")) {
+      return "bitmovin";
+    }
+    return "unknown";
+  }
+
+  const currentSite = detectSite();
+  console.log("[SideCap] Detected site:", currentSite);
 
   // Apply native captions visibility on load
   setTimeout(() => {
@@ -124,10 +158,84 @@
     lastCapturedText: "",     // For deduplication
     currentVideoId: null,     // Track current video to detect navigation
     maxTimeFlushed: 0,        // Highest video time we've ever flushed (for rewind detection)
+    // Speech capture state
+    speechCaptureActive: false,
+    speechTranscript: "",      // Current interim transcript
+    speechFinalText: "",       // Last finalized transcript
   };
 
   const dictionaryCache = new Map();
   const translationCache = new Map();
+
+  // Speech capture functions
+  // NOTE: Starting capture MUST be done via keyboard shortcut (Opt+Shift+C) or extension icon click
+  // Chrome requires user gesture on extension UI for tabCapture permission
+
+  async function stopSpeechCapture() {
+    if (!state.speechCaptureActive) {
+      console.log("[SideCap] stopSpeechCapture called but not active");
+      return;
+    }
+
+    console.log("[SideCap] Stopping speech capture...");
+    try {
+      await chrome.runtime.sendMessage({ type: "STOP_SPEECH_CAPTURE" });
+      state.speechCaptureActive = false;
+      state.speechTranscript = "";
+      state.speechFinalText = "";
+      console.log("[SideCap] Speech capture stopped successfully");
+    } catch (error) {
+      console.error("[SideCap] Error stopping speech capture:", error);
+    }
+  }
+
+  // Listen for messages from background
+  chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+    console.log("[SideCap] Message received:", message.type, message);
+
+    if (message.type === "TRANSCRIPT_UPDATE") {
+      if (message.isFinal) {
+        // Final transcript - treat like a caption
+        state.speechFinalText = message.transcript;
+        state.speechTranscript = "";
+        console.log("[SideCap] Final transcript:", message.transcript);
+      } else {
+        // Interim transcript - update live display
+        state.speechTranscript = message.transcript;
+      }
+    } else if (message.type === "SPEECH_ERROR") {
+      console.error("[SideCap] Speech error:", message.error);
+      flashStatus("Speech error: " + message.error);
+    } else if (message.type === "SPEECH_CAPTURE_ACTIVATED") {
+      // Extension icon was clicked, speech capture started
+      if (message.success) {
+        state.speechCaptureActive = true;
+        flashStatus("Smart Captions active");
+        console.log("[SideCap] Speech capture activated via extension icon");
+        // Update button UI if it exists
+        const scBtn = document.querySelector(".captions-speech-capture-button");
+        if (scBtn) {
+          scBtn.innerHTML = "";
+          scBtn.appendChild(createSVGIcon("captions", 14));
+          scBtn.title = "Smart Captions active - Click to stop";
+          scBtn.classList.add("is-active");
+        }
+      } else {
+        flashStatus("Failed: " + (message.error || "Unknown error"));
+      }
+    } else if (message.type === "SPEECH_STOPPED") {
+      state.speechCaptureActive = false;
+      state.speechTranscript = "";
+      // Update button UI
+      const scBtn = document.querySelector(".captions-speech-capture-button");
+      if (scBtn) {
+        scBtn.innerHTML = "";
+        scBtn.appendChild(createSVGIcon("captions", 14));
+        scBtn.title = "Smart Captions - Press Opt+Shift+C to start";
+        scBtn.classList.remove("is-active");
+      }
+    }
+  });
 
   // Translation API
   async function translateText(text, sourceLang, targetLang) {
@@ -255,6 +363,19 @@
         <path d="M7 2h1"/>
         <path d="m22 22-5-10-5 10"/>
         <path d="M14 18h6"/>
+      `;
+    } else if (type === "captions") {
+      // SC SideCap/Smart Caption icon
+      svg.innerHTML = `
+        <rect x="2" y="4" width="20" height="16" rx="2" ry="2"/>
+        <text x="5.5" y="15" font-size="8" font-weight="bold" fill="currentColor" stroke="none">SC</text>
+      `;
+    } else if (type === "captions-off") {
+      // SC icon with slash (active state)
+      svg.innerHTML = `
+        <rect x="2" y="4" width="20" height="16" rx="2" ry="2"/>
+        <text x="5.5" y="15" font-size="8" font-weight="bold" fill="currentColor" stroke="none">SC</text>
+        <line x1="3" x2="21" y1="3" y2="21" stroke-width="2"/>
       `;
     }
 
@@ -416,14 +537,12 @@
     state.statusOverrideUntil = Date.now() + STATUS_FLASH_MS;
   }
 
-  function getCaptionText() {
-    const container = document.querySelector(".ytp-caption-window-container");
-    if (container) {
-      // Extract text from all child elements and explicitly add spaces between them
-      // This prevents concatenation when YouTube has inline elements without spacing
-      const allTextNodes = [];
+  // Helper to extract and limit caption text
+  function extractAndLimitText(container, fallbackSelector) {
+    const MAX_CAPTION_CHARS = 150;
 
-      // Get all text-containing elements (segments, spans, etc.)
+    if (container) {
+      const allTextNodes = [];
       const walker = document.createTreeWalker(
         container,
         NodeFilter.SHOW_TEXT,
@@ -441,11 +560,7 @@
 
       const fullText = allTextNodes.join(' ');
 
-      // IMPORTANT: Limit to last ~2 lines worth of text (approx 150 chars)
-      // This prevents old captions from accumulating in the overlay
-      const MAX_CAPTION_CHARS = 150;
       if (fullText.length > MAX_CAPTION_CHARS) {
-        // Try to break at word boundary for cleaner display
         const trimmed = fullText.slice(-MAX_CAPTION_CHARS);
         const firstSpace = trimmed.indexOf(' ');
         return firstSpace > 0 ? trimmed.slice(firstSpace + 1) : trimmed;
@@ -453,32 +568,101 @@
 
       return fullText;
     }
-    // Fallback: get individual segments and join with spaces
-    const segments = Array.from(
-      document.querySelectorAll(".ytp-caption-segment")
-    );
-    if (!segments.length) {
-      return "";
+
+    // Fallback: get individual segments
+    if (fallbackSelector) {
+      const segments = Array.from(document.querySelectorAll(fallbackSelector));
+      if (segments.length) {
+        const fullText = segments
+          .map((segment) => segment.textContent)
+          .filter(Boolean)
+          .join(" ")
+          .trim();
+
+        if (fullText.length > MAX_CAPTION_CHARS) {
+          const trimmed = fullText.slice(-MAX_CAPTION_CHARS);
+          const firstSpace = trimmed.indexOf(' ');
+          return firstSpace > 0 ? trimmed.slice(firstSpace + 1) : trimmed;
+        }
+
+        return fullText;
+      }
     }
 
-    const fullText = segments
-      .map((segment) => segment.textContent)
-      .filter(Boolean)
-      .join(" ") // Add space between segments!
-      .trim();
+    return "";
+  }
 
-    // Limit to last ~2 lines worth of text
-    const MAX_CAPTION_CHARS = 150;
-    if (fullText.length > MAX_CAPTION_CHARS) {
-      const trimmed = fullText.slice(-MAX_CAPTION_CHARS);
-      const firstSpace = trimmed.indexOf(' ');
-      return firstSpace > 0 ? trimmed.slice(firstSpace + 1) : trimmed;
+  // Get caption text for YouTube
+  function getYouTubeCaptionText() {
+    const container = document.querySelector(".ytp-caption-window-container");
+    return extractAndLimitText(container, ".ytp-caption-segment");
+  }
+
+  // Get caption text for Bitmovin player (INA.fr, etc.)
+  function getBitmovinCaptionText() {
+    // Bitmovin subtitle selectors - try multiple patterns
+    const selectors = [
+      ".bmpui-ui-subtitle-overlay",    // Main subtitle overlay
+      ".bmpui-subtitle-region",         // Subtitle region
+      ".bmpui-ui-subtitle-label",       // Subtitle label
+    ];
+
+    // Phrases to filter out (UI text, error messages, not actual captions)
+    const filterPhrases = [
+      "merci de réessayer",
+      "réessayer ultérieurement",
+      "version de navigateur",
+      "télécharger",
+      "modal-subtitle",
+      "form-subtitle",
+    ];
+
+    for (const selector of selectors) {
+      const container = document.querySelector(selector);
+      if (container && container.textContent.trim()) {
+        const text = extractAndLimitText(container, null);
+        // Filter out UI messages
+        const lowerText = text.toLowerCase();
+        if (filterPhrases.some(phrase => lowerText.includes(phrase))) {
+          continue;
+        }
+        return text;
+      }
     }
 
-    return fullText;
+    return "";
+  }
+
+  function getCaptionText() {
+    // If speech capture is active, return speech transcript
+    if (state.speechCaptureActive) {
+      // Return interim transcript if available, otherwise the last final transcript
+      return state.speechTranscript || state.speechFinalText || "";
+    }
+
+    const site = detectSite();
+
+    if (site === "youtube") {
+      return getYouTubeCaptionText();
+    }
+
+    if (site === "ina" || site === "bitmovin") {
+      return getBitmovinCaptionText();
+    }
+
+    // Unknown site - try both
+    return getYouTubeCaptionText() || getBitmovinCaptionText();
   }
 
   function getCaptionsButton() {
+    const site = detectSite();
+    if (site === "youtube") {
+      return document.querySelector(".ytp-subtitles-button");
+    }
+    if (site === "ina" || site === "bitmovin") {
+      // Bitmovin subtitle toggle button
+      return document.querySelector(".bmpui-ui-subtitletogglebutton, [class*='subtitle'][class*='button']");
+    }
     return document.querySelector(".ytp-subtitles-button");
   }
 
@@ -486,14 +670,43 @@
     if (!document.querySelector("video")) {
       return "no-video";
     }
-    const button = getCaptionsButton();
-    if (!button || button.getAttribute("aria-disabled") === "true") {
+
+    const site = detectSite();
+
+    if (site === "youtube") {
+      const button = getCaptionsButton();
+      if (!button || button.getAttribute("aria-disabled") === "true") {
+        return "unavailable";
+      }
+      if (button.getAttribute("aria-pressed") === "true") {
+        return "enabled";
+      }
+      return "disabled";
+    }
+
+    if (site === "ina" || site === "bitmovin") {
+      // For Bitmovin, check if subtitle overlay exists or has content
+      const subtitleOverlay = document.querySelector(".bmpui-ui-subtitle-overlay, [class*='subtitle-overlay']");
+      if (subtitleOverlay) {
+        return "enabled"; // Subtitle container exists
+      }
+      // Check for subtitle button
+      const button = getCaptionsButton();
+      if (button) {
+        return button.classList.contains("bmpui-on") ? "enabled" : "disabled";
+      }
       return "unavailable";
     }
-    if (button.getAttribute("aria-pressed") === "true") {
-      return "enabled";
-    }
-    return "disabled";
+
+    return "unavailable";
+  }
+
+  function getSiteLabel() {
+    const site = detectSite();
+    if (site === "youtube") return "YouTube";
+    if (site === "ina") return "INA.fr";
+    if (site === "bitmovin") return "video";
+    return "video";
   }
 
   function getOverlayState() {
@@ -501,17 +714,42 @@
     if (captionText) {
       return {
         text: captionText,
-        status: "Captions active",
+        status: state.speechCaptureActive ? "Smart Captions active" : "Captions active",
         variant: "active",
         isCaption: true,
         showOverlay: true,
       };
     }
 
+    // Show waiting state when Smart Captions is on but no transcript yet
+    if (state.speechCaptureActive) {
+      return {
+        text: "Listening...",
+        status: "Smart Captions active",
+        variant: "active",
+        isCaption: false,
+        showOverlay: true,
+      };
+    }
+
+    const siteLabel = getSiteLabel();
+    const site = detectSite();
     const availability = getCaptionAvailability();
+
+    // For non-YouTube sites without embedded captions, prompt for speech capture
+    if (site !== "youtube" && availability === "unavailable") {
+      return {
+        text: "Press Opt+Shift+C to enable Smart Captions.",
+        status: "No embedded captions. Use speech capture.",
+        variant: "idle",
+        isCaption: false,
+        showOverlay: true,
+      };
+    }
+
     if (availability === "no-video") {
       return {
-        text: "Open a YouTube video to see captions.",
+        text: `Open a ${siteLabel} video to see captions.`,
         status: "No video detected.",
         variant: "idle",
         isCaption: false,
@@ -1170,18 +1408,19 @@
 
     const collapseButton = createElement("button", "captions-collapse-button");
     collapseButton.type = "button";
-    collapseButton.appendChild(createSVGIcon("chevron-down", 16));
-    collapseButton.title = "Collapse/Expand";
+    collapseButton.appendChild(createSVGIcon("panel-right", 16));
+    collapseButton.title = "Hide Sidebar";
 
-    titleLeft.append(titleText, collapseButton);
+    titleLeft.append(titleText);
 
     const titleRight = createElement("div", "captions-titlebar-right");
+
     const settingsIcon = createElement("button", "captions-settings-icon");
     settingsIcon.type = "button";
     settingsIcon.appendChild(createSVGIcon("settings", 18));
     settingsIcon.title = "Settings";
 
-    titleRight.appendChild(settingsIcon);
+    titleRight.append(collapseButton, settingsIcon);
 
     titleBar.append(titleLeft, titleRight);
 
@@ -1248,12 +1487,17 @@
     historyButton.appendChild(createSVGIcon("list", 14));
     historyButton.title = "Show Transcript History";
 
+    const speechCaptureButton = createElement("button", "captions-speech-capture-button");
+    speechCaptureButton.type = "button";
+    speechCaptureButton.appendChild(createSVGIcon("captions", 14));
+    speechCaptureButton.title = "Smart Captions - Press Opt+Shift+C to start";
+
     const captionSettingsIcon = createElement("button", "captions-caption-settings-icon");
     captionSettingsIcon.type = "button";
     captionSettingsIcon.appendChild(createSVGIcon("settings", 16));
     captionSettingsIcon.title = "Caption Settings";
 
-    floatingOverlay.append(dragHandle, recenterButton, historyButton, overlay, captionSettingsIcon);
+    floatingOverlay.append(dragHandle, recenterButton, historyButton, speechCaptureButton, overlay, captionSettingsIcon);
 
     // Word Definition Popup
     const popup = createElement("div", "captions-popup");
@@ -1765,10 +2009,11 @@
 
       const isHidden = sidebar.classList.contains("is-hidden");
 
-      // Update collapse button icon (delayed for expand case)
+      // Update collapse button icon and title
       setTimeout(() => {
         collapseButton.textContent = "";
-        collapseButton.appendChild(createSVGIcon(isHidden ? "chevron-right" : "chevron-left", 16));
+        collapseButton.appendChild(createSVGIcon("panel-right", 16));
+        collapseButton.title = isHidden ? "Show Sidebar" : "Hide Sidebar";
       }, willBeHidden === false ? 20 : 0);
 
       // Save state
@@ -1819,6 +2064,27 @@
     recenterButton.addEventListener("click", (e) => {
       e.stopPropagation();
       recenterOverlay();
+    });
+
+    // Smart Captions button
+    speechCaptureButton.addEventListener("click", async (e) => {
+      e.stopPropagation();
+      console.log("[SideCap] SC button clicked, current state:", state.speechCaptureActive);
+
+      if (state.speechCaptureActive) {
+        // Stop capture
+        console.log("[SideCap] Stopping Smart Captions...");
+        await stopSpeechCapture();
+        speechCaptureButton.innerHTML = "";
+        speechCaptureButton.appendChild(createSVGIcon("captions", 14));
+        speechCaptureButton.title = "Smart Captions - Press Opt+Shift+C to start";
+        speechCaptureButton.classList.remove("is-active");
+        flashStatus("Smart Captions stopped. Press Opt+Shift+C to restart.");
+      } else {
+        // Guide user to use keyboard shortcut (can't start from content script click)
+        console.log("[SideCap] SC not active, prompting user to use shortcut");
+        flashStatus("Press Opt+Shift+C to start Smart Captions");
+      }
     });
 
     // Drag functionality for floating overlay
@@ -2391,7 +2657,8 @@ STATS:
     if (config.sidebarCollapsed) {
       sidebar.classList.add("is-hidden");
       collapseButton.textContent = "";
-      collapseButton.appendChild(createSVGIcon("chevron-right", 16));
+      collapseButton.appendChild(createSVGIcon("panel-right", 16));
+      collapseButton.title = "Show Sidebar";
     }
 
     // Initialize
@@ -2438,9 +2705,16 @@ STATS:
     }, 3000);
   }
 
-  if (document.readyState === "loading") {
-    document.addEventListener("DOMContentLoaded", mount, { once: true });
-  } else {
-    mount();
+  // Initialize: load config first, then mount UI
+  async function init() {
+    await loadConfig();
+    console.log("[SideCap] Config loaded, mounting UI...");
+    if (document.readyState === "loading") {
+      document.addEventListener("DOMContentLoaded", mount, { once: true });
+    } else {
+      mount();
+    }
   }
+
+  init();
 })();
