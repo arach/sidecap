@@ -14,6 +14,39 @@
   color: var(--text);
 }
 
+/* Dark Theme - Explicit */
+#captions-root.theme-dark .captions-sidebar {
+  background: rgba(10, 10, 12, 0.92) !important;
+  backdrop-filter: blur(24px) saturate(180%);
+  border-right: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 2px 0 20px rgba(0, 0, 0, 0.5);
+}
+
+#captions-root.theme-dark .captions-titlebar {
+  background: rgba(0, 0, 0, 0.3) !important;
+  backdrop-filter: blur(12px);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+#captions-root.theme-dark .captions-titlebar-text {
+  color: rgba(255, 255, 255, 0.9) !important;
+}
+
+#captions-root.theme-dark .captions-sidebar-content {
+  background: rgba(0, 0, 0, 0.15) !important;
+}
+
+#captions-root.theme-dark .captions-history-header {
+  background: rgba(0, 0, 0, 0.25) !important;
+  backdrop-filter: blur(8px);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  color: rgba(255, 255, 255, 0.6) !important;
+}
+
+#captions-root.theme-dark .captions-history-text {
+  color: rgba(255, 255, 255, 0.9) !important;
+}
+
 /* Light Theme */
 #captions-root.theme-light {
   --bg: rgba(250, 250, 250, 0.95);
@@ -199,9 +232,10 @@ body:has(.captions-sidebar:not(.is-hidden)) .captions-floating-toggle {
   left: 0;
   width: 380px;
   height: 100vh;
-  background: rgba(10, 10, 12, 0.98);
-  backdrop-filter: blur(20px) saturate(180%);
-  border-right: 1px solid rgba(255, 255, 255, 0.06);
+  background: rgba(10, 10, 12, 0.92);
+  backdrop-filter: blur(24px) saturate(180%);
+  border-right: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 2px 0 20px rgba(0, 0, 0, 0.5);
   display: flex;
   flex-direction: column;
   z-index: 2147483646;
@@ -218,8 +252,9 @@ body:has(.captions-sidebar:not(.is-hidden)) .captions-floating-toggle {
   align-items: center;
   justify-content: space-between;
   padding: 14px 16px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
-  background: rgba(0, 0, 0, 0.4);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(0, 0, 0, 0.3);
+  backdrop-filter: blur(12px);
   flex-shrink: 0;
 }
 
@@ -364,7 +399,7 @@ body:has(.captions-sidebar:not(.is-hidden)) .captions-floating-toggle {
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  background: rgba(0, 0, 0, 0.2);
+  background: rgba(0, 0, 0, 0.15);
 }
 
 /* History Section - Upper part, scrollable */
@@ -956,13 +991,14 @@ body:has(.captions-sidebar:not(.is-hidden)) .captions-floating-toggle {
 /* History Header - Now part of sidebar */
 .captions-history-header {
   padding: 10px 14px;
-  background: rgba(0, 0, 0, 0.3);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+  background: rgba(0, 0, 0, 0.25);
+  backdrop-filter: blur(8px);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
   font-size: 10px;
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.6px;
-  color: rgba(255, 255, 255, 0.5);
+  color: rgba(255, 255, 255, 0.6);
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -1020,13 +1056,13 @@ body:has(.captions-sidebar:not(.is-hidden)) .captions-floating-toggle {
 }
 
 .captions-history-item {
-  background: rgba(255, 255, 255, 0.03);
-  border: 1px solid rgba(255, 255, 255, 0.04);
-  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 8px;
   padding: 10px 12px;
   text-align: left;
   cursor: pointer;
-  transition: all 0.15s;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
   display: flex;
   flex-direction: column;
   gap: 4px;
@@ -1034,8 +1070,10 @@ body:has(.captions-sidebar:not(.is-hidden)) .captions-floating-toggle {
 }
 
 .captions-history-item:hover {
-  background: rgba(74, 158, 255, 0.12);
-  border-color: rgba(74, 158, 255, 0.3);
+  background: rgba(74, 158, 255, 0.15);
+  border-color: rgba(74, 158, 255, 0.4);
+  transform: translateX(2px);
+  box-shadow: 0 2px 8px rgba(74, 158, 255, 0.2);
 }
 
 .captions-history-item-header {
@@ -1078,8 +1116,9 @@ body:has(.captions-sidebar:not(.is-hidden)) .captions-floating-toggle {
 
 .captions-history-text {
   font-size: 13px;
-  color: rgba(255, 255, 255, 0.85);
+  color: rgba(255, 255, 255, 0.9);
   line-height: 1.45;
+  font-weight: 400;
 }
 
 .captions-history-translation {

@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "SideCap",
   "description": "Learn languages faster with interactive captions - word lookup, translations, and clean transcripts in a beautiful sidebar.",
-  "version": "0.6.0",
+  "version": "0.6.1",
   "permissions": ["storage", "tabCapture", "offscreen", "activeTab"],
   "icons": {
     "16": "icons/icon16.png",

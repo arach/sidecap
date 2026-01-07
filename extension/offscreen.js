@@ -7,7 +7,7 @@ let mediaStream = null;
 let isRecognizing = false;
 
 // Initialize speech recognition with MediaStreamTrack support (Chrome 133+)
-function createRecognition(audioTrack) {
+function createRecognition(audioTrack, language = 'auto') {
   const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
 
   if (!SpeechRecognition) {
@@ -24,8 +24,13 @@ function createRecognition(audioTrack) {
   rec.interimResults = true;
   rec.maxAlternatives = 1;
 
-  // Language auto-detection, but can be configured
-  // rec.lang = "fr-FR"; // For French content like INA.fr
+  // Set language if explicitly provided
+  if (language && language !== 'auto') {
+    rec.lang = language;
+    console.log("[SideCap Offscreen] Using explicit language:", language);
+  } else {
+    console.log("[SideCap Offscreen] Using browser auto-detection for language");
+  }
 
   rec.onresult = (event) => {
     for (let i = event.resultIndex; i < event.results.length; i++) {
@@ -104,8 +109,19 @@ function createRecognition(audioTrack) {
 }
 
 // Start recognition with tab audio stream (Chrome 133+ MediaStreamTrack API)
-async function startRecognition(streamId) {
+async function startRecognition(streamId, language = 'auto') {
   console.log("[SideCap Offscreen] Starting recognition with stream ID:", streamId);
+
+  // Validate stream ID
+  if (!streamId || typeof streamId !== 'string') {
+    const error = new Error("Invalid stream ID");
+    console.error("[SideCap Offscreen]", error.message);
+    chrome.runtime.sendMessage({
+      type: "SPEECH_ERROR",
+      error: error.message
+    });
+    return;
+  }
 
   try {
     // Get the media stream from the tab using the streamId
@@ -121,16 +137,38 @@ async function startRecognition(streamId) {
 
     console.log("[SideCap Offscreen] Got media stream from tab");
 
-    // Get the audio track
-    const audioTrack = mediaStream.getAudioTracks()[0];
-    if (!audioTrack) {
+    // Validate media stream
+    if (!mediaStream || !mediaStream.active) {
+      throw new Error("Failed to get active media stream");
+    }
+
+    // Get and validate audio track
+    const audioTracks = mediaStream.getAudioTracks();
+    if (audioTracks.length === 0) {
       throw new Error("No audio track in media stream");
     }
 
-    console.log("[SideCap Offscreen] Audio track:", audioTrack.label);
+    // Select the best audio track (prefer enabled, live tracks with good sample rate)
+    const audioTrack = audioTracks.find(track =>
+      track.enabled &&
+      track.readyState === 'live' &&
+      track.getSettings().sampleRate >= 16000  // Speech recognition needs decent quality
+    ) || audioTracks[0];
 
-    // Create recognition with the audio track
-    recognition = createRecognition(audioTrack);
+    if (!audioTrack) {
+      throw new Error("No suitable audio track found");
+    }
+
+    const trackSettings = audioTrack.getSettings();
+    console.log("[SideCap Offscreen] Using audio track:", {
+      label: audioTrack.label,
+      sampleRate: trackSettings.sampleRate,
+      channelCount: trackSettings.channelCount,
+      readyState: audioTrack.readyState
+    });
+
+    // Create recognition with the audio track and language
+    recognition = createRecognition(audioTrack, language);
     if (!recognition) {
       throw new Error("Could not create speech recognition");
     }
@@ -191,7 +229,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
   switch (message.type) {
     case "START_RECOGNITION":
-      startRecognition(message.streamId);
+      startRecognition(message.streamId, message.language);
       break;
 
     case "STOP_RECOGNITION":
